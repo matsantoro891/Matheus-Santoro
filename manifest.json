@@ -1,12 +1,11 @@
 {
   "name": "cReScer juntos",
   "short_name": "cReScer",
-  "description": "Saúde, memórias, agenda e evolução da criança em um só lugar.",
+  "description": "Aplicativo para pais registrarem saúde, calendário e memórias dos filhos.",
   "start_url": "./index.html",
-  "scope": "./",
   "display": "standalone",
-  "background_color": "#f4f8ff",
-  "theme_color": "#4d8df7",
+  "background_color": "#f7faff",
+  "theme_color": "#448ef7",
   "orientation": "portrait-primary",
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },

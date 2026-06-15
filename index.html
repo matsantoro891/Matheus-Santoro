@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>cReScer juntos</title>
-  <meta name="theme-color" content="#4d8df7" />
+  <meta name="theme-color" content="#448ef7" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="cReScer" />
@@ -13,17 +13,15 @@
   <link rel="icon" href="icons/favicon.png" />
   <link rel="stylesheet" href="styles.css" />
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script defer src="growth-reference.js"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
   <header class="app-header">
     <div class="brand">
-      <img class="brand-logo" src="icons/logo-main.png" alt="" aria-hidden="true" />
+      <img src="icons/icon-192.png" alt="Logo cReScer juntos" />
       <div>
         <h1>cReScer juntos</h1>
-        <p>Saúde, memórias, agenda e evolução da criança em um só lugar.</p>
+        <p>Saúde, calendário e memórias da criança em um só lugar.</p>
       </div>
     </div>
     <div class="child-switcher">
@@ -35,142 +33,19 @@
 
   <main class="layout">
     <nav class="tabs" aria-label="Janelas principais">
-      <button class="tab-btn active" data-tab="inicio">Início</button>
-      <button class="tab-btn" data-tab="cadastro">Cadastro</button>
+      <button class="tab-btn active" data-tab="cadastro">Cadastro</button>
       <button class="tab-btn" data-tab="saude">Saúde</button>
       <button class="tab-btn" data-tab="memorias">Memórias</button>
-      <button class="tab-btn" data-tab="agenda">Calendário/Agenda</button>
-      <button class="tab-btn" data-tab="evolucao">Marcos & Evolução</button>
-      <button class="tab-btn" data-tab="favoritos">Favoritos</button>
-      <button class="tab-btn" data-tab="perfilconfig">Perfil / Configurações</button>
+      <button class="tab-btn" data-tab="calendario">Calendário</button>
+      <button class="tab-btn" data-tab="compartilhar">PDF / QR</button>
     </nav>
 
-    <section id="inicio" class="tab-panel active">
-      <div class="social-home">
-        <div class="home-hero cardless">
-          <div class="hero-topbar">
-            <button type="button" id="openSideMenu" class="hero-circle-btn" aria-label="Abrir menu">☰</button>
-            <button type="button" id="heroNotifyBtn" class="hero-circle-btn" aria-label="Notificações">🔔</button>
-          </div>
-          <div class="hero-branding">
-            <img src="icons/icon-192.png" alt="Logo Crescer Juntos" class="hero-logo" />
-            <h2>Crescer Juntos</h2>
-            <p>Cada momento, uma memória eterna.</p>
-          </div>
-          <div class="hero-decor decor-cloud cloud-left"></div>
-          <div class="hero-decor decor-cloud cloud-right"></div>
-          <div class="hero-decor decor-star star-a">★</div>
-          <div class="hero-decor decor-star star-b">★</div>
-          <div class="hero-decor decor-heart">♥</div>
-        </div>
-
-        <article class="profile-social-card card">
-          <div class="profile-avatar-wrap">
-            <div id="homeProfilePhoto" class="profile-photo placeholder">Foto</div>
-            <button type="button" id="changePhotoFromHome" class="camera-badge" aria-label="Trocar foto">📷</button>
-          </div>
-          <div class="profile-social-info">
-            <h3 id="homeChildName">Nenhuma criança cadastrada</h3>
-            <p id="homeChildAge" class="age-line">Cadastre a criança para calcular a idade.</p>
-            <div class="bio-bubble-row">
-              <p id="homeMiniBio" class="bio-bubble">Cadastre a criança para começar.</p>
-              <button type="button" id="homeFavoriteBadge" class="heart-chip" aria-label="Perfil da criança">♡</button>
-            </div>
-            <div id="homeBadges" class="badges"></div>
-          </div>
-        </article>
-
-        <div class="home-shortcuts-grid">
-          <button type="button" class="home-nav-card" data-tab-target="cadastro"><span class="home-nav-icon">👶</span><span>Cadastro</span></button>
-          <button type="button" class="home-nav-card" data-tab-target="saude"><span class="home-nav-icon">💙</span><span>Saúde</span></button>
-          <button type="button" class="home-nav-card active-card" data-tab-target="memorias"><span class="home-nav-icon">🖼️</span><span>Memórias</span></button>
-          <button type="button" class="home-nav-card" data-tab-target="agenda"><span class="home-nav-icon">📅</span><span>Calendário/Eventos</span></button>
-          <button type="button" class="home-nav-card full-width" data-tab-target="evolucao"><span class="home-nav-icon">📈</span><span>Evolução</span></button>
-        </div>
-
-        <div class="home-decor-strip card">
-          <div class="toy toy-bear">🧸</div>
-          <div class="toy toy-blocks">🧩</div>
-          <div class="toy toy-star">⭐</div>
-          <div class="toy toy-horse">🐴</div>
-        </div>
-
-        <article class="quick-panel card compact-panel">
-          <div>
-            <h3>PDF da criança</h3>
-            <p>Monte um PDF personalizado escolhendo as seções que entrarão no documento.</p>
-          </div>
-          <div class="actions compact-actions">
-            <button type="button" id="openChildPdfBuilder" class="primary">Gerar PDF da Criança</button>
-            <button type="button" id="makeQrBtn" class="secondary">Criar QR Code do Resumo</button>
-          </div>
-        </article>
-
-        <article id="childPdfBuilder" class="card hidden">
-          <h3>Selecionar conteúdo do PDF</h3>
-          <div class="checkbox-grid">
-            <label><input type="checkbox" name="pdfSection" value="cadastro" checked /> Cadastro da criança</label>
-            <label><input type="checkbox" name="pdfSection" value="fotoBio" checked /> Foto e mini bio</label>
-            <label><input type="checkbox" name="pdfSection" value="saude" checked /> Dados de saúde</label>
-            <label><input type="checkbox" name="pdfSection" value="medicacoes" checked /> Medicações em uso</label>
-            <label><input type="checkbox" name="pdfSection" value="exames" checked /> Exames</label>
-            <label><input type="checkbox" name="pdfSection" value="arquivosMedicos" checked /> Arquivos Médicos</label>
-            <label><input type="checkbox" name="pdfSection" value="consultas" checked /> Consultas</label>
-            <label><input type="checkbox" name="pdfSection" value="vacinas" checked /> Vacinas</label>
-            <label><input type="checkbox" name="pdfSection" value="agenda" checked /> Calendário/Eventos</label>
-            <label><input type="checkbox" name="pdfSection" value="proximos" checked /> Próximos eventos da agenda</label>
-            <label><input type="checkbox" name="pdfSection" value="evolucao" checked /> Evolução/Marcos</label>
-            <label><input type="checkbox" name="pdfSection" value="memoriasFavoritas" checked /> Memórias favoritas/principais</label>
-          </div>
-          <div class="actions">
-            <button type="button" id="generateSelectedChildPdf" class="primary">Criar PDF</button>
-            <button type="button" id="closeChildPdfBuilder" class="secondary">Fechar</button>
-          </div>
-        </article>
-
-        <article id="qrBox" class="card hidden">
-          <h3>QR Code do resumo</h3>
-          <p>O QR Code abre uma página compacta com dados essenciais. Para PDF completo por link externo, será necessário backend/nuvem.</p>
-          <div id="qrCodeCanvas" class="qr-canvas"></div>
-          <div class="qr-link-row">
-            <input id="qrLink" readonly />
-            <button type="button" id="copyQrLink" class="secondary">Copiar link</button>
-          </div>
-        </article>
-
-        <article class="backup-social-card card">
-          <div class="backup-head">
-            <h3>Backup e segurança</h3>
-            <p>Seus dados sempre protegidos e com você.</p>
-          </div>
-          <div class="backup-buttons-row">
-            <button type="button" id="exportBackupBtn" class="backup-action-btn light">
-              <span class="backup-action-icon">☁️</span>
-              <span><strong>Exportar dados</strong><small>Fazer backup</small></span>
-            </button>
-            <label class="backup-action-btn light import-label">
-              <span class="backup-action-icon">📥</span>
-              <span><strong>Importar dados</strong><small>Restaurar backup</small></span>
-              <input id="importBackupInput" type="file" accept="application/json" hidden />
-            </label>
-          </div>
-        </article>
-      </div>
-    </section>
-
-    <section id="cadastro" class="tab-panel">
+    <section id="cadastro" class="tab-panel active">
       <div class="section-head">
         <h2>Cadastro da criança</h2>
         <p>Preencha ou edite as informações principais. Use o botão salvar para gravar a criança cadastrada.</p>
       </div>
       <form id="childForm" class="grid-form">
-        <div class="profile-editor wide">
-          <div id="profilePreview" class="profile-photo placeholder">Foto</div>
-          <div class="profile-inputs">
-            <label>Foto de perfil da criança<input name="profilePhoto" type="file" accept="image/*" /></label>
-            <label>Mini bio<textarea name="miniBio" rows="2" placeholder="Ex.: curioso, alegre e apaixonado por bola."></textarea></label>
-          </div>
-        </div>
         <label>Nome<input name="nome" autocomplete="given-name" required /></label>
         <label>Sobrenome<input name="sobrenome" autocomplete="family-name" /></label>
         <label>Data de nascimento<input name="nascimento" type="date" /></label>
@@ -190,7 +65,7 @@
         <label>Clínica do pediatra<input name="clinicaPediatra" /></label>
         <label class="wide">Observações gerais<textarea name="observacoes" rows="4"></textarea></label>
         <div class="actions wide">
-          <button type="submit" class="primary">Salvar criança</button>
+          <button type="submit" class="primary">Salvar criança cadastrada</button>
           <button type="button" id="deleteChildBtn" class="danger">Excluir criança</button>
         </div>
       </form>
@@ -200,9 +75,6 @@
       <div class="section-head">
         <h2>Saúde</h2>
         <p>Registre medicações, exames e documentos médicos.</p>
-      </div>
-      <div class="health-sections-note card subtle-card">
-        <strong>Organização da Saúde:</strong> Medicações • Consultas • Exames • Vacinas • Arquivos Médicos • Crescimento futuro • Histórico de Saúde futuro
       </div>
       <div class="two-columns">
         <article class="card">
@@ -225,94 +97,34 @@
             <label>Data do exame<input name="data" type="date" /></label>
             <label>Nome do exame<input name="nome" required /></label>
             <label>Descrição<textarea name="descricao" rows="3"></textarea></label>
-            <label>Anexar arquivo<input name="arquivo" type="file" accept=".pdf,.jpg,.jpeg,.png,.heic,.doc,.docx,image/*,application/pdf" /></label>
+            <label>Anexar arquivo<input name="arquivo" type="file" accept=".pdf,.jpg,.jpeg,.png,.heic,.docx,image/*,application/pdf" /></label>
             <button class="primary" type="submit">Adicionar exame</button>
           </form>
           <div id="examList" class="list"></div>
         </article>
       </div>
-      <article class="card">
-        <h3>Arquivos Médicos</h3>
-        <p>Centralize documentos de saúde da criança, como laudos, receitas, encaminhamentos, relatórios e arquivos enviados pelo pediatra.</p>
-        <form id="medicalFileForm" class="grid-form compact">
-          <label>Data<input name="date" type="date" /></label>
-          <label>Título do documento<input name="title" placeholder="Ex.: Exame de sangue" required /></label>
-          <label>Anexar arquivo<input name="file" type="file" accept=".pdf,.jpg,.jpeg,.png,.heic,.doc,.docx,image/*,application/pdf" /></label>
-          <label class="wide">Descrição / observações<textarea name="description" rows="3" placeholder="Ex.: Hemograma solicitado pelo pediatra."></textarea></label>
-          <div class="actions wide"><button type="submit" class="primary">Adicionar arquivo médico</button></div>
-        </form>
-        <div class="medical-file-toolbar">
-          <label>Pesquisar<input id="medicalFileSearch" placeholder="Buscar por título ou descrição" /></label>
-          <label>Ordenar<select id="medicalFileSort"><option value="desc">Mais recentes primeiro</option><option value="asc">Mais antigos primeiro</option><option value="title">Título A-Z</option></select></label>
-        </div>
-        <div id="medicalFileList" class="list"></div>
-      </article>
     </section>
 
     <section id="memorias" class="tab-panel">
-      <div class="section-head split-head">
-        <div>
-          <h2>Memórias</h2>
-          <p>Uma mistura de rede social, álbum e diário da criança.</p>
-        </div>
-        <div class="view-toggle" role="group" aria-label="Visualização das memórias">
-          <button type="button" id="gridViewBtn" class="secondary active">Grade</button>
-          <button type="button" id="listViewBtn" class="secondary">Lista</button>
-        </div>
+      <div class="section-head">
+        <h2>Memórias</h2>
+        <p>Guarde momentos especiais com data, descrição e anexos.</p>
       </div>
-
-      <div class="actions top-actions">
-        <button type="button" id="showMemoryFormBtn" class="primary">Nova memória</button>
-        <button type="button" id="showAlbumFormBtn" class="secondary">Criar álbum</button>
-        <button type="button" id="showMemoryPdfBuilderBtn" class="secondary">Criar Recordações</button>
-      </div>
-
-      <article id="albumFormCard" class="card hidden">
-        <h3>Criar álbum</h3>
-        <form id="albumForm" class="inline-form">
-          <label>Nome do álbum<input name="nome" placeholder="Ex.: Natal 2025" required /></label>
-          <button type="submit" class="primary">Salvar álbum</button>
-        </form>
-      </article>
-
-      <article id="memoryFormCard" class="card hidden">
-        <h3>Nova memória</h3>
+      <article class="card">
         <form id="memoryForm" class="grid-form compact">
-          <label>Data<input name="data" type="date" required /></label>
-          <label>Título<input name="titulo" placeholder="Ex.: Primeira palavra" /></label>
-          <label>Álbum<select name="albumId" id="memoryAlbumSelect"></select></label>
-          <label>Favoritar<select name="favorite"><option value="false">Não</option><option value="true">Sim</option></select></label>
-          <label class="wide">Descrição<textarea name="descricao" rows="3" placeholder="Ex.: Hoje falou mamãe."></textarea></label>
-          <label class="wide">Adicionar fotos, vídeos ou arquivos<input name="arquivo" type="file" accept="image/*,video/*,.pdf,.doc,.docx" multiple /><small>Limite inicial: até 5 anexos por memória.</small></label>
-          <div class="actions wide"><button type="submit" class="primary">Salvar memória</button></div>
+          <label>Data<input name="data" type="date" /></label>
+          <label>Título<input name="titulo" required /></label>
+          <label class="wide">Descrição<textarea name="descricao" rows="3"></textarea></label>
+          <label class="wide">Anexar foto, vídeo ou arquivo<input name="arquivo" type="file" accept="image/*,video/*,.pdf,.docx" /></label>
+          <div class="actions wide"><button type="submit" class="primary">Adicionar memória</button></div>
         </form>
       </article>
-
-      <article id="memoryPdfBuilder" class="card hidden">
-        <h3>Criar Recordações</h3>
-        <p>O PDF usa apenas memórias com fotos. Vídeos ficam salvos no aplicativo e no backup, mas não entram no PDF.</p>
-        <div class="grid-form compact">
-          <label>Filtro<select id="memoryPdfFilter"><option value="all">Selecionar tudo</option><option value="manual">Selecionar manualmente</option><option value="period">Selecionar por período</option><option value="album">Selecionar álbum específico</option></select></label>
-          <label>Data inicial<input id="memoryPdfStart" type="date" /></label>
-          <label>Data final<input id="memoryPdfEnd" type="date" /></label>
-          <label>Álbum<select id="memoryPdfAlbum"></select></label>
-          <label>Capa<select id="memoryPdfCoverSource"><option value="first">Usar primeira foto selecionada</option><option value="profile">Usar foto de perfil da criança</option><option value="upload">Enviar nova foto</option></select></label>
-          <label>Nova foto de capa<input id="memoryPdfCoverUpload" type="file" accept="image/*" /></label>
-        </div>
-        <div id="manualMemorySelection" class="manual-list hidden"></div>
-        <div class="actions">
-          <button type="button" id="generateMemoryPdfBtn" class="primary">Criar Recordações</button>
-          <button type="button" id="closeMemoryPdfBuilder" class="secondary">Fechar</button>
-        </div>
-      </article>
-
-      <div id="albumsRow" class="album-row"></div>
       <div id="memoryList" class="memory-grid"></div>
     </section>
 
-    <section id="agenda" class="tab-panel">
+    <section id="calendario" class="tab-panel">
       <div class="section-head">
-        <h2>Calendário/Agenda</h2>
+        <h2>Calendário</h2>
         <p>Cadastre consultas, vacinas, exames, cursos, escola e outros eventos.</p>
       </div>
       <article class="card">
@@ -332,216 +144,37 @@
       <div id="eventList" class="list"></div>
     </section>
 
-    <section id="evolucao" class="tab-panel">
+    <section id="compartilhar" class="tab-panel">
       <div class="section-head">
-        <h2>Marcos & Evolução</h2>
-        <p>Acompanhe peso, altura, desenvolvimento motor e categorias personalizadas ao longo do tempo.</p>
+        <h2>PDF e QR Code</h2>
+        <p>Gere um PDF com cadastro, saúde e calendário. Depois crie um QR Code para compartilhar o resumo principal.</p>
       </div>
-      <article class="card">
-        <div class="actions top-actions">
-          <button type="button" id="showMilestoneFormBtn" class="primary">+ Criar acompanhamento</button>
-          <button type="button" id="generateEvolutionPdfBtn" class="secondary">Gerar Resumo Evolutivo</button>
+      <article class="card share-card">
+        <h3>Resumo compartilhável da criança</h3>
+        <p>O PDF inclui: cadastro, problemas de saúde, alergias, responsáveis, pediatra, medicações, exames cadastrados e eventos do calendário. Os anexos não entram no PDF; são listados pelo nome do arquivo.</p>
+        <div class="actions">
+          <button type="button" id="pdfBtn" class="primary">Criar PDF completo</button>
+          <button type="button" id="qrBtn" class="secondary">Criar QR Code do PDF</button>
+          <button type="button" id="exportBtn" class="secondary">Exportar backup JSON</button>
+          <label class="import-label secondary">Importar backup JSON<input id="importInput" type="file" accept="application/json" hidden /></label>
         </div>
-        <form id="milestoneForm" class="grid-form compact hidden">
-          <input name="milestoneId" type="hidden" />
-          <label>Categoria<select name="category" id="milestoneCategorySelect"></select></label>
-          <label id="milestoneCustomCategoryField">Categoria personalizada<input name="customCategory" placeholder="Digite o nome da categoria" /></label>
-          <label>Data<input name="date" type="date" required /></label>
-          <label id="milestoneTitleField">Título curto<input name="title" placeholder="Ex.: Sentou sem apoio" /></label>
-          <label id="milestoneValueField">Valor opcional
-            <div class="value-unit-field">
-              <input name="value" id="milestoneValueInput" placeholder="Digite um valor" />
-              <span id="milestoneValueUnit" class="value-unit hidden"></span>
-            </div>
-          </label>
-          <label class="wide">Descrição / observação<textarea name="description" rows="3"></textarea></label>
-          <label class="wide">Foto opcional<input name="photo" type="file" accept="image/*" /></label>
-          <div class="actions wide">
-            <button type="submit" id="saveMilestoneBtn" class="primary">Salvar registro</button>
-            <button type="button" id="cancelMilestoneEditBtn" class="secondary hidden">Cancelar edição</button>
+        <div id="qrResult" class="qr-result" hidden>
+          <h4>QR Code gerado</h4>
+          <p>Ao escanear, a pessoa abrirá uma página de resumo com botão para baixar/imprimir o PDF.</p>
+          <img id="qrImage" alt="QR Code do resumo da criança" />
+          <div class="qr-link-row">
+            <input id="qrLink" readonly />
+            <button type="button" id="copyLinkBtn" class="secondary">Copiar link</button>
           </div>
-        </form>
+        </div>
       </article>
-
-      <div class="growth-chart-grid">
-        <article class="card growth-chart-card">
-          <div class="growth-chart-head">
-            <div><h3>Peso por idade</h3><p>Curvas de referência da OMS e registros da criança.</p></div>
-            <span id="weightChartStatus" class="growth-status"></span>
-          </div>
-          <div id="weightGrowthChart" class="growth-chart"></div>
-          <small class="growth-source">Referência: OMS. Peso por idade disponível até 10 anos.</small>
-        </article>
-        <article class="card growth-chart-card">
-          <div class="growth-chart-head">
-            <div><h3>Altura por idade</h3><p>Curvas de referência da OMS e registros da criança.</p></div>
-            <span id="heightChartStatus" class="growth-status"></span>
-          </div>
-          <div id="heightGrowthChart" class="growth-chart"></div>
-          <small class="growth-source">Referência: OMS. Altura por idade disponível até 19 anos.</small>
-        </article>
-      </div>
-
-      <div id="milestoneList" class="milestone-list"></div>
     </section>
   </main>
 
-  
-    <section id="favoritos" class="tab-panel">
-      <div class="section-head">
-        <h2>Favoritos / Rápido</h2>
-        <p>Acesso rápido às informações mais importantes da criança.</p>
-      </div>
-      <div class="favorite-grid">
-        <article class="card"><h3>Próximos eventos</h3><div id="favoriteUpcomingEvents" class="list"></div></article>
-        <article class="card"><h3>Evolução recente</h3><div id="favoriteRecentMilestones" class="list"></div></article>
-      </div>
-      <div class="favorite-grid">
-        <article class="card"><h3>Memórias favoritas</h3><div id="favoriteMemories" class="memory-grid list-view"></div></article>
-        <article class="card"><h3>Estatísticas rápidas</h3><div id="favoriteStats" class="stats-grid"></div></article>
-      </div>
-    </section>
-
-    <section id="perfilconfig" class="tab-panel">
-      <div class="section-head">
-        <h2>Perfil / Configurações</h2>
-        <p>Dados dos pais, personalização, segurança, exportações e ajuda.</p>
-      </div>
-      <div class="two-columns">
-        <article class="card">
-          <h3>Personalização</h3>
-          <label>Tema visual<select id="themeSelect">
-            <option value="auto">Tema automático (recomendado)</option>
-            <option value="bebe-neutro">👶 Bebê neutro</option>
-            <option value="infantil-menino">🩵 Infantil menino</option>
-            <option value="infantil-menina">🩷 Infantil menina</option>
-            <option value="preadolescente-menino">🧒 Pré-adolescente menino</option>
-            <option value="preadolescente-menina">👧 Pré-adolescente menina</option>
-            <option value="adolescente-menino">👦 Adolescente menino</option>
-            <option value="adolescente-menina">👩 Adolescente menina</option>
-          </select></label>
-          <label class="switch-row"><input id="autoThemeToggle" type="checkbox" checked /> <span>Usar tema automático pela idade</span></label>
-          <div id="themeHint" class="theme-hint"></div>
-        </article>
-        <article class="card">
-          <h3>Crianças cadastradas</h3>
-          <label for="drawerChildSelect">Selecionar criança<select id="drawerChildSelect"></select></label>
-          <div class="actions">
-            <button type="button" id="newChildBtnPanel" class="secondary">Adicionar criança</button>
-            <button type="button" id="goToCadastroBtn" class="primary">Editar criança</button>
-          </div>
-        </article>
-      </div>
-      <div class="two-columns">
-        <article class="card">
-          <h3>PDFs e Relatórios</h3>
-          <div class="actions">
-            <button type="button" id="openChildPdfBuilderProfile" class="secondary">Resumo da criança</button>
-            <button type="button" id="openMemoriesPdfProfile" class="secondary">Álbum de memórias</button>
-            <button type="button" id="openEvolutionPdfProfile" class="secondary">Relatório evolutivo</button>
-          </div>
-        </article>
-        <article class="card">
-          <h3>Ferramentas e Segurança</h3>
-          <div class="actions">
-            <button type="button" id="makeQrBtnProfile" class="secondary">QR Code</button>
-            <button type="button" id="exportBackupBtnProfile" class="secondary">Backup manual</button>
-            <button type="button" id="notifyBtnProfile" class="secondary">Permissões / Notificações</button>
-          </div>
-          <p class="muted">Face ID / Touch ID e sincronização em nuvem podem ser conectados em uma versão futura.</p>
-        </article>
-      </div>
-    </section>
-
-  <aside id="sideMenu" class="side-menu hidden" aria-hidden="true">
-    <div class="side-menu-panel">
-      <div class="side-menu-head">
-        <div>
-          <strong>Crescer Juntos</strong>
-          <p>Perfil social da criança</p>
-        </div>
-        <button type="button" id="closeSideMenu" class="hero-circle-btn">✕</button>
-      </div>
-      <div class="side-menu-group">
-        <h4>Personalização</h4>
-        <label>Tema<select id="themeSelectMenu">
-          <option value="auto">Tema automático</option>
-          <option value="bebe-neutro">👶 Bebê neutro</option>
-          <option value="infantil-menino">🩵 Infantil menino</option>
-          <option value="infantil-menina">🩷 Infantil menina</option>
-          <option value="preadolescente-menino">🧒 Pré-adolescente menino</option>
-          <option value="preadolescente-menina">👧 Pré-adolescente menina</option>
-          <option value="adolescente-menino">👦 Adolescente menino</option>
-          <option value="adolescente-menina">👩 Adolescente menina</option>
-        </select></label>
-      </div>
-      <div class="side-menu-group">
-        <h4>Crianças cadastradas</h4>
-        <label>Criança ativa<select id="drawerChildSelectMenu"></select></label>
-        <div class="actions"><button type="button" id="newChildBtnMenu" class="secondary">Adicionar criança</button><button type="button" id="editChildBtnMenu" class="secondary">Editar criança</button></div>
-      </div>
-      <div class="side-menu-group">
-        <h4>PDFs e Ferramentas</h4>
-        <div class="actions"><button type="button" id="drawerOpenRecordacoes" class="secondary">Criar Recordações</button><button type="button" id="drawerOpenQr" class="secondary">QR Code</button><button type="button" id="drawerOpenBackup" class="secondary">Backup</button></div>
-      </div>
-      <div class="side-menu-group">
-        <h4>Sobre</h4>
-        <p>Versão local do aplicativo com foco em saúde, memórias, agenda e evolução.</p>
-      </div>
-    </div>
-  </aside>
-  <div id="sideMenuBackdrop" class="side-menu-backdrop hidden"></div>
-
-  <nav class="bottom-nav" aria-label="Navegação inferior">
-    <button type="button" class="bottom-nav-btn active" data-tab-target="inicio"><span>🏠</span><small>Home</small></button>
-    <button type="button" class="bottom-nav-btn" data-tab-target="favoritos"><span>❤️</span><small>Favoritos</small></button>
-    <button type="button" class="bottom-nav-btn" data-tab-target="perfilconfig"><span>👤</span><small>Perfil</small></button>
-  </nav>
-<footer class="app-footer">
+  <footer class="app-footer">
     <span>cReScer juntos • MVP local</span>
-    <span>Para sincronização real entre dispositivos e PDF completo por QR Code, conectar Firebase ou Supabase.</span>
+    <span>Para sincronização real entre dispositivos, conectar Firebase ou Supabase.</span>
   </footer>
-
-  <div id="memoryViewerModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Visualização da memória">
-    <div class="modal-card memory-viewer-card">
-      <button type="button" id="closeMemoryViewer" class="modal-close">Fechar</button>
-      <div id="memoryCarouselStage" class="memory-carousel-stage"></div>
-      <div class="carousel-controls">
-        <button type="button" id="prevMemoryAsset" class="secondary">Anterior</button>
-        <span id="memoryAssetCounter">1 de 1</span>
-        <button type="button" id="nextMemoryAsset" class="secondary">Próxima</button>
-      </div>
-      <form id="memoryEditForm" class="grid-form compact memory-edit-form">
-        <input name="memoryId" type="hidden" />
-        <label>Data<input name="date" type="date" /></label>
-        <label>Título<input name="title" /></label>
-        <label>Álbum<select name="albumId" id="memoryEditAlbumSelect"></select></label>
-        <label>Favorito<select name="favorite"><option value="false">Não</option><option value="true">Sim</option></select></label>
-        <label class="wide">Descrição<textarea name="description" rows="3"></textarea></label>
-        <label class="wide">Adicionar novos anexos<input name="newFiles" type="file" accept="image/*,video/*,.pdf,.doc,.docx" multiple /></label>
-        <div class="actions wide">
-          <button type="submit" class="primary">Salvar alterações</button>
-          <button type="button" id="downloadAllMemoryAssets" class="secondary">Baixar todos</button>
-        </div>
-      </form>
-      <div id="memoryAttachmentList" class="attachment-list"></div>
-    </div>
-  </div>
-
-  <div id="videoModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Player de vídeo">
-    <div class="modal-card">
-      <button type="button" id="closeVideoModal" class="modal-close">Fechar</button>
-      <video id="memoryVideoPlayer" controls playsinline></video>
-    </div>
-  </div>
-
-
-  <div id="photoModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Visualização de foto">
-    <div class="modal-card photo-modal-card">
-      <button type="button" id="closePhotoModal" class="modal-close">Fechar</button>
-      <img id="memoryPhotoViewer" alt="Foto da memória" />
-    </div>
-  </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </body>

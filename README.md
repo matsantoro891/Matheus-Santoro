@@ -1,30 +1,34 @@
-# Crescer Juntos — v7
+# cReScer juntos - Versão 2
 
-Atualização mantendo a identidade visual anterior e acrescentando:
+Aplicativo web responsivo/PWA para pais registrarem saúde, calendário e memórias dos filhos.
 
-- Botões principais menores e mais modernos na tela inicial.
-- Nova área **Arquivos Médicos** dentro da aba Saúde.
-- Pesquisa, ordenação, visualização, download, edição e exclusão de arquivos médicos.
-- Opção **Incluir Arquivos Médicos** no PDF Resumo da Criança.
-- Memórias com até 5 anexos por memória.
-- Grade estilo Instagram mostrando a primeira foto/capa.
-- Indicador visual de múltiplos anexos.
-- Visualização de memória em modal com carrossel.
-- Suporte a fotos, vídeos e documentos na memória.
-- Botões para visualizar, baixar, compartilhar, substituir e excluir anexos.
-- Botão Baixar todos em memórias com múltiplos anexos.
-- PDFs com padrão visual mais moderno, familiar e profissional.
-- Melhor preservação da orientação das imagens nos PDFs.
+## Novidades desta versão
 
-Versão local/PWA. Para sincronização real entre dispositivos, backend futuro recomendado: Firebase ou Supabase.
+- Botão **Salvar criança cadastrada** na aba Cadastro.
+- Botão **Criar PDF completo** na aba PDF / QR.
+- Botão **Criar QR Code do PDF**.
+- O QR Code abre uma página compartilhável (`report.html`) com as principais informações da criança e botão para baixar/imprimir o PDF.
+- Exportação e importação de backup JSON.
+- PWA com manifest, service worker, ícones Android/iPhone e Apple Touch Icon.
 
+## Conteúdo do PDF
 
-## Atualização v10
-Os anexos de Saúde > Exames agora são armazenados permanentemente em IndexedDB, preservando nome, tipo MIME, tamanho e conteúdo após fechar ou recarregar o PWA. O backup também inclui esses anexos.
+O PDF inclui:
 
+- Dados do cadastro da criança.
+- Problemas de saúde e alergias.
+- Responsáveis e contatos de emergência.
+- Pediatra.
+- Medicações cadastradas.
+- Exames cadastrados.
+- Eventos do calendário.
 
-## Atualização Marcos & Evolução
-- Categorias disponíveis: Peso, Altura, Desenvolvimento motor e Categoria personalizada.
-- Peso em kg e altura em metros.
-- Gráficos de peso/idade e altura/idade com curvas e percentis OMS por sexo e idade.
-- Edição e exclusão confirmada dos registros.
+Os anexos não são incorporados ao PDF nesta versão; seus nomes são listados no relatório.
+
+## Observação importante sobre QR Code
+
+Sem backend em nuvem, o QR Code carrega um resumo compacto dos principais dados da criança no próprio link. Para compartilhar PDFs grandes, anexos ou dados completos entre vários dispositivos, a próxima etapa técnica deve ser integrar Firebase ou Supabase com armazenamento de arquivos e autenticação.
+
+## Publicação
+
+Pode ser publicado em Netlify, Vercel ou GitHub Pages. Após publicar, abrir o link no celular e selecionar "Adicionar à Tela Inicial" para instalar como aplicativo PWA.
