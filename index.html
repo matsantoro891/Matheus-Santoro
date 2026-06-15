@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="styles.css" />
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script defer src="growth-reference.js"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
@@ -334,7 +335,7 @@
     <section id="evolucao" class="tab-panel">
       <div class="section-head">
         <h2>Marcos & Evolução</h2>
-        <p>Crie acompanhamentos personalizados: peso, altura, sono, fala, escola, comportamento e categorias próprias.</p>
+        <p>Acompanhe peso, altura, desenvolvimento motor e categorias personalizadas ao longo do tempo.</p>
       </div>
       <article class="card">
         <div class="actions top-actions">
@@ -342,16 +343,45 @@
           <button type="button" id="generateEvolutionPdfBtn" class="secondary">Gerar Resumo Evolutivo</button>
         </div>
         <form id="milestoneForm" class="grid-form compact hidden">
+          <input name="milestoneId" type="hidden" />
           <label>Categoria<select name="category" id="milestoneCategorySelect"></select></label>
-          <label>Categoria personalizada<input name="customCategory" placeholder="Ex.: Dentição" /></label>
+          <label id="milestoneCustomCategoryField">Categoria personalizada<input name="customCategory" placeholder="Digite o nome da categoria" /></label>
           <label>Data<input name="date" type="date" required /></label>
-          <label>Título curto<input name="title" placeholder="Ex.: Sentou sem apoio" /></label>
-          <label>Valor opcional<input name="value" placeholder="Ex.: 7,2 kg, 65 cm" /></label>
+          <label id="milestoneTitleField">Título curto<input name="title" placeholder="Ex.: Sentou sem apoio" /></label>
+          <label id="milestoneValueField">Valor opcional
+            <div class="value-unit-field">
+              <input name="value" id="milestoneValueInput" placeholder="Digite um valor" />
+              <span id="milestoneValueUnit" class="value-unit hidden"></span>
+            </div>
+          </label>
           <label class="wide">Descrição / observação<textarea name="description" rows="3"></textarea></label>
           <label class="wide">Foto opcional<input name="photo" type="file" accept="image/*" /></label>
-          <div class="actions wide"><button type="submit" class="primary">Salvar registro</button></div>
+          <div class="actions wide">
+            <button type="submit" id="saveMilestoneBtn" class="primary">Salvar registro</button>
+            <button type="button" id="cancelMilestoneEditBtn" class="secondary hidden">Cancelar edição</button>
+          </div>
         </form>
       </article>
+
+      <div class="growth-chart-grid">
+        <article class="card growth-chart-card">
+          <div class="growth-chart-head">
+            <div><h3>Peso por idade</h3><p>Curvas de referência da OMS e registros da criança.</p></div>
+            <span id="weightChartStatus" class="growth-status"></span>
+          </div>
+          <div id="weightGrowthChart" class="growth-chart"></div>
+          <small class="growth-source">Referência: OMS. Peso por idade disponível até 10 anos.</small>
+        </article>
+        <article class="card growth-chart-card">
+          <div class="growth-chart-head">
+            <div><h3>Altura por idade</h3><p>Curvas de referência da OMS e registros da criança.</p></div>
+            <span id="heightChartStatus" class="growth-status"></span>
+          </div>
+          <div id="heightGrowthChart" class="growth-chart"></div>
+          <small class="growth-source">Referência: OMS. Altura por idade disponível até 19 anos.</small>
+        </article>
+      </div>
+
       <div id="milestoneList" class="milestone-list"></div>
     </section>
   </main>

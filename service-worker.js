@@ -1,5 +1,5 @@
-const CACHE_NAME = 'crescer-juntos-v10-cache';
-const ASSETS = ['./', './index.html', './styles.css', './app.js', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
+const CACHE_NAME = 'crescer-juntos-v11-cache';
+const ASSETS = ['./', './index.html', './styles.css', './app.js', './growth-reference.js', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)));

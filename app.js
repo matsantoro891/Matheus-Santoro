@@ -2,7 +2,14 @@ const STORAGE_KEY = 'crescer-juntos-v3';
 const EXAM_DB_NAME = 'crescer-juntos-exam-files';
 const EXAM_DB_VERSION = 1;
 const EXAM_STORE_NAME = 'attachments';
-const DEFAULT_CATEGORIES = ['Peso', 'Altura', 'Dentição', 'Sono', 'Alimentação', 'Fala', 'Desenvolvimento motor', 'Escola', 'Comportamento', 'Medicações', 'Vacinas extras', 'Categoria personalizada'];
+const DEFAULT_CATEGORIES = ['Peso', 'Altura', 'Desenvolvimento motor', 'Categoria personalizada'];
+const GROWTH_PERCENTILES = [
+  { label: 'P3', z: -1.880793608 },
+  { label: 'P15', z: -1.036433389 },
+  { label: 'P50', z: 0 },
+  { label: 'P85', z: 1.036433389 },
+  { label: 'P97', z: 1.880793608 }
+];
 
 let state = loadState();
 let memoryView = 'grid';
@@ -1018,8 +1025,277 @@ function renderEvents() {
   `).join('') : '<p class="muted">Nenhum evento cadastrado.</p>';
 }
 
+function childSexKey(child = currentChild()) {
+  const sex = String(child.sexo || '').toLowerCase();
+  if (sex.includes('femin')) return 'female';
+  if (sex.includes('mascul')) return 'male';
+  return null;
+}
+
+function parseLocaleNumber(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
+  const match = String(value || '').replace(',', '.').match(/-?\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : NaN;
+}
+
+function formatLocaleNumber(value, decimals = 2) {
+  return Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: decimals });
+}
+
+function dateAtMidday(value) {
+  if (!value) return null;
+  const date = new Date(`${value}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function ageDaysAt(child, dateValue) {
+  const birth = dateAtMidday(child.nascimento);
+  const measured = dateAtMidday(dateValue);
+  if (!birth || !measured || measured < birth) return null;
+  return Math.max(0, Math.round((measured - birth) / 86400000));
+}
+
+function ageMonthsFromDays(days) {
+  return days == null ? null : days / 30.4375;
+}
+
+function getGrowthLms(metric, sex, ageDays) {
+  const source = window.WHO_GROWTH_DATA?.[metric]?.[sex];
+  if (!source || ageDays == null || ageDays < 0) return null;
+  const under = source.under5;
+  const dayIndex = Math.round(ageDays) - under.start;
+  if (dayIndex >= 0 && dayIndex < under.values.length) return { lms: under.values[dayIndex], ageUnit: 'day', ageKey: Math.round(ageDays) };
+  const month = Math.floor(ageDays / 30.4375);
+  const older = source.older;
+  const monthIndex = month - older.start;
+  if (monthIndex >= 0 && monthIndex < older.values.length) return { lms: older.values[monthIndex], ageUnit: 'month', ageKey: month };
+  return null;
+}
+
+function lmsValueAtZ(lms, z) {
+  if (!lms) return NaN;
+  const [L, M, S] = lms;
+  if (Math.abs(L) < 1e-9) return M * Math.exp(S * z);
+  const base = 1 + L * S * z;
+  return base > 0 ? M * Math.pow(base, 1 / L) : NaN;
+}
+
+function lmsZScore(value, lms) {
+  if (!lms || !Number.isFinite(value) || value <= 0) return NaN;
+  const [L, M, S] = lms;
+  if (Math.abs(L) < 1e-9) return Math.log(value / M) / S;
+  return (Math.pow(value / M, L) - 1) / (L * S);
+}
+
+function normalCdf(z) {
+  const sign = z < 0 ? -1 : 1;
+  const x = Math.abs(z) / Math.sqrt(2);
+  const t = 1 / (1 + 0.3275911 * x);
+  const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429;
+  const erf = sign * (1 - (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t) * Math.exp(-x * x));
+  return 0.5 * (1 + erf);
+}
+
+function milestoneMeasurement(item) {
+  const numeric = Number.isFinite(Number(item.numericValue)) ? Number(item.numericValue) : parseLocaleNumber(item.value);
+  if (!Number.isFinite(numeric)) return NaN;
+  if (item.category === 'Altura') {
+    if (item.unit === 'cm' || /cm/i.test(String(item.value || '')) || numeric > 3) return numeric;
+    return numeric * 100;
+  }
+  return numeric;
+}
+
+function milestonePercentile(item, child = currentChild()) {
+  const metric = item.category === 'Peso' ? 'weight' : item.category === 'Altura' ? 'height' : null;
+  const sex = childSexKey(child);
+  const days = ageDaysAt(child, item.date);
+  if (!metric || !sex || days == null) return null;
+  const reference = getGrowthLms(metric, sex, days);
+  if (!reference) return null;
+  const value = milestoneMeasurement(item);
+  const z = lmsZScore(value, reference.lms);
+  if (!Number.isFinite(z)) return null;
+  return { percentile: Math.max(0.1, Math.min(99.9, normalCdf(z) * 100)), z, ageDays: days, ageMonths: ageMonthsFromDays(days) };
+}
+
+function percentileLabel(result) {
+  if (!result) return '';
+  const value = result.percentile;
+  if (value < 1) return 'abaixo de P1';
+  if (value > 99) return 'acima de P99';
+  return `P${Math.round(value)}`;
+}
+
+function updateMilestoneFieldBehavior() {
+  const form = $('milestoneForm');
+  if (!form) return;
+  const category = form.elements.category.value;
+  const isWeight = category === 'Peso';
+  const isHeight = category === 'Altura';
+  const isGrowth = isWeight || isHeight;
+  $('milestoneCustomCategoryField').classList.toggle('hidden', category !== 'Categoria personalizada');
+  $('milestoneTitleField').classList.toggle('hidden', isGrowth);
+  const valueInput = $('milestoneValueInput');
+  const unit = $('milestoneValueUnit');
+  if (isGrowth) {
+    valueInput.type = 'number';
+    valueInput.step = '0.01';
+    valueInput.min = '0';
+    valueInput.inputMode = 'decimal';
+    valueInput.placeholder = isWeight ? 'Ex.: 12,5' : 'Ex.: 0,82';
+    unit.textContent = isWeight ? 'kg' : 'm';
+    unit.classList.remove('hidden');
+    $('milestoneValueField').firstChild.textContent = isWeight ? 'Peso ' : 'Altura ';
+  } else {
+    valueInput.type = 'text';
+    valueInput.removeAttribute('step');
+    valueInput.removeAttribute('min');
+    valueInput.placeholder = 'Valor opcional';
+    unit.textContent = '';
+    unit.classList.add('hidden');
+    $('milestoneValueField').firstChild.textContent = 'Valor opcional ';
+  }
+}
+
+function resetMilestoneForm() {
+  const form = $('milestoneForm');
+  form.reset();
+  form.elements.milestoneId.value = '';
+  $('saveMilestoneBtn').textContent = 'Salvar registro';
+  $('cancelMilestoneEditBtn').classList.add('hidden');
+  updateMilestoneFieldBehavior();
+}
+
+function growthChartAgeLimit(metric, child, items) {
+  const birth = dateAtMidday(child.nascimento);
+  const currentDays = birth ? Math.max(0, Math.round((Date.now() - birth.getTime()) / 86400000)) : 0;
+  const itemMonths = items.map(item => ageMonthsFromDays(ageDaysAt(child, item.date))).filter(Number.isFinite);
+  const latest = Math.max(ageMonthsFromDays(currentDays) || 0, ...itemMonths, 0);
+  const hardMax = metric === 'weight' ? 120 : 228;
+  if (latest <= 24) return 24;
+  if (latest <= 60) return 60;
+  if (latest <= 120) return 120;
+  return hardMax;
+}
+
+function chartReferencePoint(metric, sex, month, z) {
+  const days = Math.round(month * 30.4375);
+  const ref = getGrowthLms(metric, sex, days);
+  if (!ref) return null;
+  const value = lmsValueAtZ(ref.lms, z);
+  return Number.isFinite(value) ? (metric === 'height' ? value / 100 : value) : null;
+}
+
+function svgPath(points, xScale, yScale) {
+  const valid = points.filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+  if (!valid.length) return '';
+  return valid.map((p, index) => `${index ? 'L' : 'M'} ${xScale(p.x).toFixed(1)} ${yScale(p.y).toFixed(1)}`).join(' ');
+}
+
+function renderGrowthChart(metric) {
+  const child = currentChild();
+  const container = metric === 'weight' ? $('weightGrowthChart') : $('heightGrowthChart');
+  const status = metric === 'weight' ? $('weightChartStatus') : $('heightChartStatus');
+  if (!container) return;
+  const sex = childSexKey(child);
+  if (!child.nascimento || !sex) {
+    container.innerHTML = '<div class="growth-empty">Cadastre a data de nascimento e o sexo da criança para exibir as curvas.</div>';
+    status.textContent = '';
+    return;
+  }
+  const category = metric === 'weight' ? 'Peso' : 'Altura';
+  const items = child.milestones.filter(item => item.category === category).map(item => {
+    const days = ageDaysAt(child, item.date);
+    return { item, x: ageMonthsFromDays(days), y: metric === 'height' ? milestoneMeasurement(item) / 100 : milestoneMeasurement(item), result: milestonePercentile(item, child) };
+  }).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y));
+  const maxMonths = growthChartAgeLimit(metric, child, items.map(p => p.item));
+  const step = maxMonths <= 24 ? 1 : maxMonths <= 60 ? 2 : maxMonths <= 120 ? 4 : 6;
+  const referenceSeries = GROWTH_PERCENTILES.map(percentile => ({
+    ...percentile,
+    points: Array.from({ length: Math.floor(maxMonths / step) + 1 }, (_, index) => {
+      const month = Math.min(maxMonths, index * step);
+      return { x: month, y: chartReferencePoint(metric, sex, month, percentile.z) };
+    }).filter(point => Number.isFinite(point.y))
+  }));
+  const allY = referenceSeries.flatMap(series => series.points.map(point => point.y)).concat(items.filter(p => p.x <= maxMonths).map(p => p.y));
+  if (!allY.length) {
+    container.innerHTML = '<div class="growth-empty">Referência indisponível para esta idade.</div>';
+    status.textContent = '';
+    return;
+  }
+  let yMin = Math.min(...allY), yMax = Math.max(...allY);
+  const pad = Math.max((yMax - yMin) * 0.09, metric === 'weight' ? 0.5 : 0.03);
+  yMin = Math.max(0, yMin - pad); yMax += pad;
+  const W = 760, H = 350, left = 58, top = 24, right = 46, bottom = 50;
+  const plotW = W - left - right, plotH = H - top - bottom;
+  const xScale = value => left + (value / maxMonths) * plotW;
+  const yScale = value => top + (1 - (value - yMin) / (yMax - yMin)) * plotH;
+  const yTicks = Array.from({ length: 6 }, (_, i) => yMin + (yMax - yMin) * i / 5);
+  const xTicks = Array.from({ length: 7 }, (_, i) => maxMonths * i / 6);
+  const curveColors = ['#9aa8bd', '#9ec5f8', '#2563b8', '#9ec5f8', '#9aa8bd'];
+  const curves = referenceSeries.map((series, index) => `<path d="${svgPath(series.points, xScale, yScale)}" fill="none" stroke="${curveColors[index]}" stroke-width="${series.label === 'P50' ? 2.8 : 1.6}" stroke-dasharray="${series.label === 'P50' ? '' : '5 4'}"/><text x="${W-right+5}" y="${yScale(series.points[series.points.length - 1]?.y || yMin)+4}" class="curve-label">${series.label}</text>`).join('');
+  const points = items.filter(point => point.x <= maxMonths).map(point => {
+    const label = percentileLabel(point.result) || 'sem percentil';
+    return `<g><circle cx="${xScale(point.x)}" cy="${yScale(point.y)}" r="6" class="child-growth-point"><title>${formatDate(point.item.date)} — ${formatLocaleNumber(metric === 'height' ? point.y : point.y, 2)} ${metric === 'weight' ? 'kg' : 'm'} — ${label}</title></circle><text x="${xScale(point.x)+8}" y="${yScale(point.y)-8}" class="point-label">${label}</text></g>`;
+  }).join('');
+  const gridY = yTicks.map(value => `<line x1="${left}" y1="${yScale(value)}" x2="${W-right}" y2="${yScale(value)}" class="chart-grid-line"/><text x="${left-8}" y="${yScale(value)+4}" text-anchor="end" class="axis-label">${formatLocaleNumber(value, metric === 'weight' ? 1 : 2)}</text>`).join('');
+  const gridX = xTicks.map(value => `<line x1="${xScale(value)}" y1="${top}" x2="${xScale(value)}" y2="${H-bottom}" class="chart-grid-line vertical"/><text x="${xScale(value)}" y="${H-bottom+24}" text-anchor="middle" class="axis-label">${value < 24 ? Math.round(value) + 'm' : formatLocaleNumber(value/12,1) + 'a'}</text>`).join('');
+  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de ${category.toLowerCase()} por idade"><rect x="${left}" y="${top}" width="${plotW}" height="${plotH}" rx="12" class="chart-bg"/>${gridY}${gridX}${curves}${points}<text x="${left}" y="16" class="axis-title">${metric === 'weight' ? 'Peso (kg)' : 'Altura (m)'}</text><text x="${W-right}" y="${H-8}" text-anchor="end" class="axis-title">Idade</text></svg>`;
+  const latest = [...items].sort((a,b) => (b.item.date || '').localeCompare(a.item.date || ''))[0];
+  status.textContent = latest?.result ? `Último: ${percentileLabel(latest.result)}` : items.length ? 'Sem referência para o último registro' : 'Sem registros';
+}
+
+function renderGrowthCharts() {
+  renderGrowthChart('weight');
+  renderGrowthChart('height');
+}
+
+window.editMilestone = function(id) {
+  const item = currentChild().milestones.find(record => record.id === id);
+  if (!item) return;
+  const form = $('milestoneForm');
+  form.classList.remove('hidden');
+  form.elements.milestoneId.value = item.id;
+  if (DEFAULT_CATEGORIES.includes(item.category) && item.category !== 'Categoria personalizada') {
+    form.elements.category.value = item.category;
+    form.elements.customCategory.value = '';
+  } else {
+    form.elements.category.value = 'Categoria personalizada';
+    form.elements.customCategory.value = item.category || '';
+  }
+  updateMilestoneFieldBehavior();
+  form.elements.date.value = item.date || '';
+  form.elements.title.value = item.title || '';
+  let value = item.numericValue ?? parseLocaleNumber(item.value);
+  if (item.category === 'Altura' && Number.isFinite(Number(value)) && (item.unit === 'cm' || /cm/i.test(String(item.value || '')) || Number(value) > 3)) value = Number(value) / 100;
+  form.elements.value.value = Number.isFinite(Number(value)) ? Number(value) : (item.value || '');
+  form.elements.description.value = item.description || '';
+  $('saveMilestoneBtn').textContent = 'Salvar alterações';
+  $('cancelMilestoneEditBtn').classList.remove('hidden');
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+window.deleteMilestone = function(id) {
+  if (!confirm('Deseja realmente excluir este registro de evolução?')) return;
+  const child = currentChild();
+  child.milestones = child.milestones.filter(item => item.id !== id);
+  saveState();
+  renderAll();
+  showToast('Registro de evolução excluído.');
+};
+
 function populateMilestoneCategories() {
-  $('milestoneCategorySelect').innerHTML = DEFAULT_CATEGORIES.map(c => `<option>${escapeHtml(c)}</option>`).join('');
+  const select = $('milestoneCategorySelect');
+  const current = select.value;
+  select.innerHTML = DEFAULT_CATEGORIES.map(c => `<option>${escapeHtml(c)}</option>`).join('');
+  if (DEFAULT_CATEGORIES.includes(current)) select.value = current;
+  updateMilestoneFieldBehavior();
+}
+
+function milestoneCategoryOrder(category) {
+  const index = DEFAULT_CATEGORIES.indexOf(category);
+  return index === -1 ? 3 : index;
 }
 
 function renderMilestones() {
@@ -1028,21 +1304,31 @@ function renderMilestones() {
     (acc[item.category] ||= []).push(item);
     return acc;
   }, {});
-  const categories = Object.keys(byCategory).sort();
+  const categories = Object.keys(byCategory).sort((a,b) => milestoneCategoryOrder(a) - milestoneCategoryOrder(b) || a.localeCompare(b));
   if (!categories.length) {
     $('milestoneList').innerHTML = '<p class="muted">Nenhum acompanhamento cadastrado.</p>';
     return;
   }
   $('milestoneList').innerHTML = categories.map(category => `
     <h3 class="category-title">${escapeHtml(category)}</h3>
-    ${byCategory[category].sort((a,b) => (a.date || '').localeCompare(b.date || '')).map(item => `
+    ${byCategory[category].sort((a,b) => (a.date || '').localeCompare(b.date || '')).map(item => {
+      const percentile = milestonePercentile(item, child);
+      const percentileText = percentileLabel(percentile);
+      return `
       <article class="item milestone-card">
         ${item.photo ? `<img src="${item.photo.dataUrl}" alt="${escapeHtml(item.title || category)}">` : ''}
-        <div class="item-top"><strong>${escapeHtml(item.title || category)}</strong><button class="danger" onclick="removeItem('milestones','${item.id}')">Excluir</button></div>
+        <div class="item-top">
+          <strong>${escapeHtml(item.title || category)}</strong>
+          <div class="milestone-actions">
+            <button class="secondary compact-edit-btn" onclick="editMilestone('${item.id}')">Editar</button>
+            <button class="danger compact-delete-btn" onclick="deleteMilestone('${item.id}')">Excluir</button>
+          </div>
+        </div>
         <small>${formatDate(item.date)} ${item.value ? '• ' + escapeHtml(item.value) : ''}</small>
+        ${percentileText ? `<span class="percentile-badge">Percentil: ${escapeHtml(percentileText)}</span>` : (category === 'Peso' || category === 'Altura') ? '<span class="percentile-badge neutral">Percentil indisponível</span>' : ''}
         ${item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}
-      </article>
-    `).join('')}
+      </article>`;
+    }).join('')}
   `).join('');
 }
 
@@ -1070,6 +1356,7 @@ function renderAll() {
   renderProfileSettings();
   renderEvents();
   populateMilestoneCategories();
+  renderGrowthCharts();
   renderMilestones();
 }
 
@@ -1272,18 +1559,64 @@ function addFormListeners() {
     showToast(permission === 'granted' ? 'Notificações ativadas.' : 'Notificações não autorizadas.');
   });
 
-  $('showMilestoneFormBtn').addEventListener('click', () => $('milestoneForm').classList.toggle('hidden'));
+  $('showMilestoneFormBtn').addEventListener('click', () => {
+    const form = $('milestoneForm');
+    if (form.classList.contains('hidden')) {
+      resetMilestoneForm();
+      form.classList.remove('hidden');
+    } else {
+      form.classList.add('hidden');
+    }
+  });
+  $('milestoneCategorySelect').addEventListener('change', updateMilestoneFieldBehavior);
+  $('cancelMilestoneEditBtn').addEventListener('click', () => {
+    resetMilestoneForm();
+    $('milestoneForm').classList.add('hidden');
+  });
   $('milestoneForm').addEventListener('submit', async event => {
     event.preventDefault();
     const form = event.currentTarget;
     const data = Object.fromEntries(new FormData(form).entries());
-    const category = data.customCategory.trim() || data.category;
+    const selectedCategory = data.category;
+    const category = selectedCategory === 'Categoria personalizada' ? data.customCategory.trim() : selectedCategory;
+    if (!category) return showToast('Digite o nome da categoria personalizada.');
+    const isWeight = category === 'Peso';
+    const isHeight = category === 'Altura';
+    const isGrowth = isWeight || isHeight;
+    let numericValue = null;
+    let value = String(data.value || '').trim();
+    let unit = '';
+    if (isGrowth) {
+      numericValue = parseLocaleNumber(value);
+      if (!Number.isFinite(numericValue) || numericValue <= 0) return showToast(`Informe um valor válido em ${isWeight ? 'kg' : 'metros'}.`);
+      unit = isWeight ? 'kg' : 'm';
+      value = `${formatLocaleNumber(numericValue, 2)} ${unit}`;
+    }
     const photo = await fileToDataUrl(form.elements.photo.files[0]);
-    currentChild().milestones.push({ id: uid(), category, date: data.date, title: data.title, value: data.value, description: data.description, photo });
-    form.reset();
+    const existingId = data.milestoneId;
+    const child = currentChild();
+    if (existingId) {
+      const item = child.milestones.find(record => record.id === existingId);
+      if (!item) return;
+      Object.assign(item, {
+        category,
+        date: data.date,
+        title: isGrowth ? '' : data.title,
+        value,
+        numericValue,
+        unit,
+        description: data.description,
+        photo: photo || item.photo || null
+      });
+      showToast('Registro de evolução atualizado.');
+    } else {
+      child.milestones.push({ id: uid(), category, date: data.date, title: isGrowth ? '' : data.title, value, numericValue, unit, description: data.description, photo });
+      showToast('Registro de evolução salvo.');
+    }
+    resetMilestoneForm();
+    form.classList.add('hidden');
     saveState();
     renderAll();
-    showToast('Registro de evolução salvo.');
   });
   $('generateEvolutionPdfBtn').addEventListener('click', () => generateEvolutionPdf());
 
@@ -1739,7 +2072,8 @@ async function generateEvolutionPdf() {
     y = addSection(doc, category, y, [34, 178, 125]);
     const sorted = items.sort((a,b) => (a.date || '').localeCompare(b.date || ''));
     sorted.forEach(item => {
-      y = addParagraph(doc, `• ${formatDate(item.date)} - ${item.title || category}${item.value ? ': ' + item.value : ''}. ${item.description || ''}`, y);
+      const pct = percentileLabel(milestonePercentile(item, child));
+      y = addParagraph(doc, `• ${formatDate(item.date)} - ${item.title || category}${item.value ? ': ' + item.value : ''}${pct ? ' — Percentil ' + pct : ''}. ${item.description || ''}`, y);
       if (item.photo) {
         y = ensurePage(doc, y, 42);
         addImageSafe(doc, item.photo.dataUrl, 20, y, 52, 36);

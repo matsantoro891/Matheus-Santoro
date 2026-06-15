@@ -21,3 +21,10 @@ Versão local/PWA. Para sincronização real entre dispositivos, backend futuro 
 
 ## Atualização v10
 Os anexos de Saúde > Exames agora são armazenados permanentemente em IndexedDB, preservando nome, tipo MIME, tamanho e conteúdo após fechar ou recarregar o PWA. O backup também inclui esses anexos.
+
+
+## Atualização Marcos & Evolução
+- Categorias disponíveis: Peso, Altura, Desenvolvimento motor e Categoria personalizada.
+- Peso em kg e altura em metros.
+- Gráficos de peso/idade e altura/idade com curvas e percentis OMS por sexo e idade.
+- Edição e exclusão confirmada dos registros.
