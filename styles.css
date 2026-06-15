@@ -40,11 +40,14 @@ button, .import-label { cursor: pointer; }
 }
 
 .brand { display: flex; gap: 14px; align-items: center; }
-.brand img {
-  width: 58px;
-  height: 58px;
-  border-radius: 17px;
-  box-shadow: 0 12px 28px rgba(77, 141, 247, 0.25);
+.brand .brand-logo {
+  display: block;
+  height: 60px;
+  width: auto;
+  max-width: 92px;
+  object-fit: contain;
+  object-position: center;
+  flex: 0 0 auto;
 }
 .brand h1 { margin: 0; font-size: clamp(1.35rem, 3vw, 2rem); letter-spacing: -0.04em; }
 .brand p { margin: 2px 0 0; color: var(--muted); }
@@ -304,7 +307,7 @@ button, .import-label {
 
 @media (max-width: 520px) {
   .layout { padding-inline: 12px; }
-  .brand img { width: 50px; height: 50px; }
+  .brand .brand-logo { height: 58px; width: auto; max-width: 88px; }
   .child-switcher { width: 100%; }
   .child-switcher select, .child-switcher button { flex: 1 1 100%; }
   .memory-grid { grid-template-columns: 1fr; }
