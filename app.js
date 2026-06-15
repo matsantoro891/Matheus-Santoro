@@ -1746,7 +1746,7 @@ let appLogoCache = null;
 async function getAppLogoDataUrl() {
   if (appLogoCache) return appLogoCache;
   try {
-    const response = await fetch('icons/icon-192.png');
+    const response = await fetch('icons/logo-main.png');
     const blob = await response.blob();
     appLogoCache = await new Promise(resolve => {
       const reader = new FileReader();
