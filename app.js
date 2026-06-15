@@ -1,0 +1,1823 @@
+const STORAGE_KEY = 'crescer-juntos-v3';
+const EXAM_DB_NAME = 'crescer-juntos-exam-files';
+const EXAM_DB_VERSION = 1;
+const EXAM_STORE_NAME = 'attachments';
+const DEFAULT_CATEGORIES = ['Peso', 'Altura', 'Dentição', 'Sono', 'Alimentação', 'Fala', 'Desenvolvimento motor', 'Escola', 'Comportamento', 'Medicações', 'Vacinas extras', 'Categoria personalizada'];
+
+let state = loadState();
+let memoryView = 'grid';
+let activeAlbumFilter = 'all';
+let toastTimer = null;
+
+function uid() {
+  return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+function emptyChild() {
+  return {
+    id: uid(),
+    nome: '', sobrenome: '', nascimento: '', sexo: '', tipoSanguineo: '',
+    problemas: '', alergias: '', mae: '', telefoneMae: '', pai: '', telefonePai: '',
+    emergenciaNome: '', emergenciaTelefone: '', pediatraNome: '', pediatraTelefone: '', pediatraEmail: '', clinicaPediatra: '',
+    observacoes: '', miniBio: '', profilePhoto: '',
+    medications: [], exams: [], medicalFiles: [], memories: [], albums: [], events: [], milestones: []
+  };
+}
+
+function loadState() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch (error) {
+    console.warn(error);
+  }
+  const child = emptyChild();
+  return { activeChildId: child.id, children: [child], settings: {} };
+}
+
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (error) {
+    showToast('Não foi possível salvar. O navegador pode estar sem espaço para fotos/vídeos.');
+    console.error(error);
+  }
+}
+
+function currentChild() {
+  let child = state.children.find(c => c.id === state.activeChildId);
+  if (!child) {
+    child = state.children[0] || emptyChild();
+    if (!state.children.length) state.children.push(child);
+    state.activeChildId = child.id;
+  }
+  normalizeChild(child);
+  return child;
+}
+
+function normalizeChild(child) {
+  child.medications ||= [];
+  child.exams ||= [];
+  child.medicalFiles ||= [];
+  child.memories ||= [];
+  child.albums ||= [];
+  child.events ||= [];
+  child.milestones ||= [];
+  child.profilePhoto ||= '';
+  child.miniBio ||= '';
+  child.memories.forEach(memory => {
+    if (!Array.isArray(memory.files)) {
+      memory.files = memory.file ? [memory.file] : [];
+    }
+    memory.files = memory.files.filter(Boolean).slice(0, 5).map((asset, index) => ({
+      id: asset.id || uid(),
+      name: asset.name || `anexo-${index + 1}`,
+      type: asset.type || 'application/octet-stream',
+      dataUrl: asset.dataUrl || asset.data || '',
+      thumbnail: asset.thumbnail || '',
+      createdAt: asset.createdAt || new Date().toISOString()
+    }));
+  });
+}
+
+function $(id) { return document.getElementById(id); }
+function qsa(selector, root = document) { return [...root.querySelectorAll(selector)]; }
+
+function calculateAgeText(dateString) {
+  if (!dateString) return 'Cadastre a criança para calcular a idade.';
+  const birth = new Date(dateString + 'T12:00:00');
+  if (Number.isNaN(birth.getTime())) return 'Idade não disponível.';
+  const now = new Date();
+  let years = now.getFullYear() - birth.getFullYear();
+  let months = now.getMonth() - birth.getMonth();
+  let days = now.getDate() - birth.getDate();
+  if (days < 0) {
+    const prevMonth = new Date(now.getFullYear(), now.getMonth(), 0).getDate();
+    days += prevMonth;
+    months -= 1;
+  }
+  if (months < 0) {
+    months += 12;
+    years -= 1;
+  }
+  const parts = [];
+  if (years > 0) parts.push(`${years} ano${years > 1 ? 's' : ''}`);
+  if (months > 0) parts.push(`${months} ${months === 1 ? 'mês' : 'meses'}`);
+  if (days >= 0 && (years === 0 || parts.length < 2)) parts.push(`${days} dia${days === 1 ? '' : 's'}`);
+  return parts.slice(0, 3).join(', ');
+}
+
+function suggestThemeByAge(dateString) {
+  if (!dateString) return 'bebe-neutro';
+  const birth = new Date(dateString + 'T12:00:00');
+  if (Number.isNaN(birth.getTime())) return 'bebe-neutro';
+  const now = new Date();
+  let years = now.getFullYear() - birth.getFullYear();
+  if (now.getMonth() < birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate())) years -= 1;
+  if (years <= 2) return 'bebe-neutro';
+  if (years <= 8) return 'infantil-menino';
+  if (years <= 12) return 'preadolescente-menino';
+  return 'adolescente-menino';
+}
+
+function effectiveTheme() {
+  const child = currentChild();
+  const settings = state.settings || (state.settings = {});
+  if (settings.autoTheme !== false || !settings.theme || settings.theme === 'auto') return suggestThemeByAge(child.nascimento);
+  return settings.theme;
+}
+
+function applyTheme() {
+  const theme = effectiveTheme();
+  document.body.dataset.theme = theme;
+  const hint = $('themeHint');
+  if (hint) hint.textContent = `Tema atual: ${theme.replace(/-/g, ' ')}`;
+  ['themeSelect', 'themeSelectMenu'].forEach(id => { if ($(id)) $(id).value = state.settings?.autoTheme !== false ? 'auto' : (state.settings?.theme || theme); });
+  if ($('autoThemeToggle')) $('autoThemeToggle').checked = state.settings?.autoTheme !== false;
+}
+
+function setThemeSelection(value) {
+  state.settings ||= {};
+  if (value === 'auto') {
+    state.settings.autoTheme = true;
+    state.settings.theme = 'auto';
+  } else {
+    state.settings.autoTheme = false;
+    state.settings.theme = value;
+  }
+  saveState();
+  applyTheme();
+}
+
+function switchTab(tabId, opts = {}) {
+  const panel = $(tabId);
+  if (!panel) return;
+  qsa('.tab-panel').forEach(p => p.classList.remove('active'));
+  panel.classList.add('active');
+  qsa('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tabId));
+  qsa('.bottom-nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tabTarget === tabId));
+  qsa('.home-nav-card').forEach(btn => btn.classList.toggle('active-card', btn.dataset.tabTarget === tabId));
+  if (opts.closeMenu) closeSideMenu();
+  if (opts.scroll !== false) {
+    requestAnimationFrame(() => {
+      const target = tabId === 'inicio' ? panel : panel.querySelector('form, .top-actions, .card:not(.hidden), .section-head') || panel;
+      const top = Math.max(0, target.getBoundingClientRect().top + window.pageYOffset - 12);
+      window.scrollTo({ top, behavior: 'smooth' });
+    });
+  }
+}
+
+function openSideMenu() {
+  $('sideMenu')?.classList.remove('hidden');
+  $('sideMenuBackdrop')?.classList.remove('hidden');
+}
+function closeSideMenu() {
+  $('sideMenu')?.classList.add('hidden');
+  $('sideMenuBackdrop')?.classList.add('hidden');
+}
+
+function showToast(message) {
+  const toast = $('toast');
+  toast.textContent = message;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 2600);
+}
+
+function escapeHtml(value = '') {
+  return String(value).replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+}
+
+function formatDate(value) {
+  if (!value) return 'Sem data';
+  const [year, month, day] = value.split('-');
+  if (!year || !month || !day) return value;
+  return `${day}/${month}/${year}`;
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) return resolve(null);
+    const reader = new FileReader();
+    reader.onload = () => resolve({
+      name: file.name,
+      type: file.type || 'application/octet-stream',
+      size: Number(file.size || 0),
+      dataUrl: reader.result
+    });
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+function dataUrlToBlob(dataUrl) {
+  const [header, encoded] = String(dataUrl || '').split(',');
+  const mime = (header.match(/data:([^;]+)/) || [])[1] || 'application/octet-stream';
+  const binary = atob(encoded || '');
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return new Blob([bytes], { type: mime });
+}
+
+function openExamDb() {
+  return new Promise((resolve, reject) => {
+    if (!('indexedDB' in window)) return reject(new Error('IndexedDB não disponível'));
+    const request = indexedDB.open(EXAM_DB_NAME, EXAM_DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(EXAM_STORE_NAME)) {
+        db.createObjectStore(EXAM_STORE_NAME, { keyPath: 'id' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Falha ao abrir IndexedDB'));
+  });
+}
+
+async function putExamAttachmentRecord(record) {
+  const db = await openExamDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(EXAM_STORE_NAME, 'readwrite');
+    transaction.objectStore(EXAM_STORE_NAME).put(record);
+    transaction.oncomplete = () => { db.close(); resolve(record); };
+    transaction.onerror = () => { db.close(); reject(transaction.error || new Error('Falha ao salvar anexo')); };
+  });
+}
+
+async function getExamAttachmentRecord(id) {
+  if (!id) return null;
+  const db = await openExamDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(EXAM_STORE_NAME, 'readonly');
+    const request = transaction.objectStore(EXAM_STORE_NAME).get(id);
+    request.onsuccess = () => { db.close(); resolve(request.result || null); };
+    request.onerror = () => { db.close(); reject(request.error || new Error('Falha ao recuperar anexo')); };
+  });
+}
+
+async function deleteExamAttachmentRecord(id) {
+  if (!id || !('indexedDB' in window)) return;
+  const db = await openExamDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(EXAM_STORE_NAME, 'readwrite');
+    transaction.objectStore(EXAM_STORE_NAME).delete(id);
+    transaction.oncomplete = () => { db.close(); resolve(); };
+    transaction.onerror = () => { db.close(); reject(transaction.error || new Error('Falha ao excluir anexo')); };
+  });
+}
+
+async function storeExamAttachment(file, existingId = '') {
+  if (!file) return null;
+  const id = existingId || uid();
+  const type = file.type || 'application/octet-stream';
+  const metadata = {
+    id,
+    name: file.name || 'arquivo',
+    type,
+    size: Number(file.size || 0),
+    storage: 'indexeddb',
+    updatedAt: new Date().toISOString()
+  };
+  try {
+    await putExamAttachmentRecord({ ...metadata, blob: file });
+    return metadata;
+  } catch (error) {
+    console.warn('IndexedDB indisponível; usando Base64 como alternativa.', error);
+    const fallback = await fileToDataUrl(file);
+    return { ...metadata, ...fallback, storage: 'base64' };
+  }
+}
+
+async function getExamAttachmentBlob(fileMeta) {
+  if (!fileMeta) return null;
+  if (fileMeta.dataUrl) return dataUrlToBlob(fileMeta.dataUrl);
+  if (fileMeta.id) {
+    try {
+      const record = await getExamAttachmentRecord(fileMeta.id);
+      return record?.blob || null;
+    } catch (error) {
+      console.warn('Não foi possível recuperar o anexo do exame.', error);
+      return null;
+    }
+  }
+  return null;
+}
+
+async function migrateLegacyExamAttachments(targetState = state) {
+  let changed = false;
+  for (const child of targetState.children || []) {
+    child.exams ||= [];
+    for (const exam of child.exams) {
+      const file = exam.file;
+      if (!file?.dataUrl || file.storage === 'indexeddb') continue;
+      try {
+        const blob = dataUrlToBlob(file.dataUrl);
+        const stored = await storeExamAttachment(new File([blob], file.name || 'arquivo', { type: file.type || blob.type }));
+        exam.file = { ...stored, size: Number(file.size || blob.size || 0) };
+        changed = true;
+      } catch (error) {
+        console.warn('Falha ao migrar anexo antigo de exame.', error);
+      }
+    }
+  }
+  return changed;
+}
+
+async function fileToMemoryAsset(file) {
+  const asset = await fileToDataUrl(file);
+  if (!asset) return null;
+  asset.id = uid();
+  asset.createdAt = new Date().toISOString();
+  if (asset.type && asset.type.startsWith('video/')) {
+    asset.thumbnail = await createVideoThumbnail(asset.dataUrl).catch(() => '');
+  }
+  return asset;
+}
+
+function createVideoThumbnail(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    const timer = setTimeout(() => { cleanup(); reject(new Error('Tempo excedido ao gerar capa do vídeo.')); }, 5000);
+    const cleanup = () => {
+      clearTimeout(timer);
+      video.removeAttribute('src');
+      video.load();
+    };
+    const capture = () => {
+      try {
+        const width = video.videoWidth || 640;
+        const height = video.videoHeight || 360;
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d');
+        context.drawImage(video, 0, 0, width, height);
+        const thumbnail = canvas.toDataURL('image/jpeg', 0.86);
+        cleanup();
+        resolve(thumbnail);
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
+    };
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'metadata';
+    video.addEventListener('loadeddata', () => {
+      if (video.duration && video.duration > 0.2) {
+        video.currentTime = 0.1;
+      } else {
+        capture();
+      }
+    }, { once: true });
+    video.addEventListener('seeked', capture, { once: true });
+    video.addEventListener('error', () => { cleanup(); reject(new Error('Não foi possível gerar capa do vídeo.')); }, { once: true });
+    video.src = dataUrl;
+  });
+}
+
+function loadImageElement(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
+async function normalizeImageForPdf(dataUrl) {
+  try {
+    const img = await loadImageElement(dataUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
+    const context = canvas.getContext('2d');
+    context.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.92);
+  } catch (error) {
+    console.warn('Não foi possível normalizar a orientação da imagem.', error);
+    return dataUrl;
+  }
+}
+
+function downloadText(filename, text, mime = 'text/plain') {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./service-worker.js').catch(console.warn);
+  }
+}
+
+function initTabs() {
+  qsa('.tab-btn').forEach(button => button.addEventListener('click', () => switchTab(button.dataset.tab)));
+  qsa('[data-tab-target]').forEach(button => button.addEventListener('click', () => switchTab(button.dataset.tabTarget)));
+}
+
+function renderChildSelect() {
+  const optionHtml = state.children.map(child => {
+    normalizeChild(child);
+    const label = child.nome ? `${child.nome} ${child.sobrenome || ''}`.trim() : 'Criança sem nome';
+    return `<option value="${child.id}" ${child.id === state.activeChildId ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+  }).join('');
+  ['childSelect', 'drawerChildSelect', 'drawerChildSelectMenu'].forEach(id => {
+    const select = $(id);
+    if (select) select.innerHTML = optionHtml;
+  });
+}
+
+function setImagePreview(container, dataUrl, fallback = 'Foto') {
+  container.classList.toggle('placeholder', !dataUrl);
+  container.innerHTML = dataUrl ? `<img src="${dataUrl}" alt="Foto da criança">` : fallback;
+}
+
+function fillChildForm() {
+  const child = currentChild();
+  const form = $('childForm');
+  Object.keys(child).forEach(key => {
+    if (form.elements[key] && key !== 'profilePhoto') form.elements[key].value = child[key] || '';
+  });
+  setImagePreview($('profilePreview'), child.profilePhoto, 'Foto');
+}
+
+function renderHome() {
+  const child = currentChild();
+  setImagePreview($('homeProfilePhoto'), child.profilePhoto, 'Foto');
+  $('homeChildName').textContent = child.nome ? `${child.nome} ${child.sobrenome || ''}`.trim() : 'Criança sem nome';
+  $('homeChildAge').textContent = calculateAgeText(child.nascimento);
+  $('homeMiniBio').textContent = child.miniBio || 'Mini bio ainda não preenchida.';
+  const badges = [];
+  if (child.tipoSanguineo) badges.push(`Tipo sanguíneo: ${child.tipoSanguineo}`);
+  if (child.alergias) badges.push('Alergias registradas');
+  if (child.problemas) badges.push('Saúde registrada');
+  badges.push(`${child.memories.length} memórias`);
+  badges.push(`${child.events.length} eventos`);
+  badges.push(`${child.milestones.length} registros`);
+  $('homeBadges').innerHTML = badges.map(b => `<span class="badge">${escapeHtml(b)}</span>`).join('');
+  applyTheme();
+}
+
+function renderMedications() {
+  const child = currentChild();
+  $('medList').innerHTML = child.medications.length ? child.medications.map(m => `
+    <div class="item">
+      <div class="item-top"><strong>${escapeHtml(m.nome)}</strong><button class="danger" onclick="removeItem('medications','${m.id}')">Excluir</button></div>
+      <p><b>Dose:</b> ${escapeHtml(m.dose || '-')} • <b>Frequência:</b> ${escapeHtml(m.frequencia || '-')} • <b>Horário:</b> ${escapeHtml(m.horario || '-')}</p>
+      <p><b>Início:</b> ${formatDate(m.inicio)} • <b>Término:</b> ${formatDate(m.termino)}</p>
+      ${m.observacoes ? `<p>${escapeHtml(m.observacoes)}</p>` : ''}
+    </div>
+  `).join('') : '<p class="muted">Nenhuma medicação cadastrada.</p>';
+}
+
+async function renderExams() {
+  const child = currentChild();
+  const list = $('examList');
+  if (!list) return;
+  if (!child.exams.length) {
+    list.innerHTML = '<p class="muted">Nenhum exame cadastrado.</p>';
+    return;
+  }
+  list.innerHTML = child.exams.map(e => {
+    const file = e.file;
+    const fileInfo = file
+      ? `<small>${escapeHtml(file.name || 'Arquivo')} • ${escapeHtml(file.type || 'tipo não informado')} • ${formatFileSize(file.size)}</small>`
+      : '<small>Sem anexo</small>';
+    const fileActions = file ? `
+      <div class="actions inline-actions">
+        <button type="button" class="secondary" onclick="viewExamAttachment('${e.id}')">Visualizar</button>
+        <button type="button" class="secondary" onclick="downloadExamAttachment('${e.id}')">Baixar</button>
+        <button type="button" class="secondary" onclick="replaceExamAttachment('${e.id}')">Substituir anexo</button>
+      </div>` : `
+      <div class="actions inline-actions">
+        <button type="button" class="secondary" onclick="replaceExamAttachment('${e.id}')">Adicionar anexo</button>
+      </div>`;
+    return `
+      <div class="item">
+        <div class="item-top">
+          <strong>${escapeHtml(e.nome)}</strong>
+          <div class="actions inline-actions">
+            <button type="button" class="secondary" onclick="editExam('${e.id}')">Editar</button>
+            <button type="button" class="danger" onclick="removeExam('${e.id}')">Excluir</button>
+          </div>
+        </div>
+        <small>${formatDate(e.data)}</small>
+        ${e.descricao ? `<p>${escapeHtml(e.descricao)}</p>` : ''}
+        ${fileInfo}
+        ${fileActions}
+      </div>`;
+  }).join('');
+}
+
+function formatFileSize(bytes) {
+  const value = Number(bytes || 0);
+  if (!value) return 'tamanho não informado';
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+window.viewExamAttachment = async function(examId) {
+  const exam = currentChild().exams.find(item => item.id === examId);
+  if (!exam?.file) return showToast('Este exame não possui anexo.');
+  const blob = await getExamAttachmentBlob(exam.file);
+  if (!blob) return showToast('Não foi possível recuperar o arquivo.');
+  const url = URL.createObjectURL(blob);
+  const opened = window.open(url, '_blank', 'noopener');
+  if (!opened) {
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.click();
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+};
+
+window.downloadExamAttachment = async function(examId) {
+  const exam = currentChild().exams.find(item => item.id === examId);
+  if (!exam?.file) return showToast('Este exame não possui anexo.');
+  const blob = await getExamAttachmentBlob(exam.file);
+  if (!blob) return showToast('Não foi possível recuperar o arquivo.');
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = exam.file.name || 'arquivo-do-exame';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+};
+
+window.editExam = function(examId) {
+  const exam = currentChild().exams.find(item => item.id === examId);
+  if (!exam) return;
+  const name = prompt('Nome do exame:', exam.nome || '');
+  if (name === null) return;
+  const date = prompt('Data no formato AAAA-MM-DD:', exam.data || '');
+  if (date === null) return;
+  const description = prompt('Descrição:', exam.descricao || '');
+  if (description === null) return;
+  exam.nome = name.trim();
+  exam.data = date.trim();
+  exam.descricao = description.trim();
+  saveState();
+  renderAll();
+  showToast('Exame atualizado.');
+};
+
+window.replaceExamAttachment = function(examId) {
+  const exam = currentChild().exams.find(item => item.id === examId);
+  if (!exam) return;
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.jpg,.jpeg,.png,.heic,.doc,.docx,image/*,application/pdf';
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    const oldFile = exam.file;
+    const stored = await storeExamAttachment(file, oldFile?.id || '');
+    exam.file = stored;
+    saveState();
+    renderAll();
+    showToast('Anexo do exame salvo permanentemente.');
+  }, { once: true });
+  input.click();
+};
+
+window.removeExam = async function(examId) {
+  const child = currentChild();
+  const exam = child.exams.find(item => item.id === examId);
+  if (!exam) return;
+  if (exam.file?.id && exam.file.storage === 'indexeddb') {
+    await deleteExamAttachmentRecord(exam.file.id).catch(console.warn);
+  }
+  child.exams = child.exams.filter(item => item.id !== examId);
+  saveState();
+  renderAll();
+  showToast('Exame excluído.');
+};
+
+function renderMedicalFiles() {
+  const child = currentChild();
+  const search = ($('medicalFileSearch')?.value || '').trim().toLowerCase();
+  const sort = $('medicalFileSort')?.value || 'desc';
+  let files = [...child.medicalFiles];
+  if (search) {
+    files = files.filter(item => `${item.title || ''} ${item.description || ''}`.toLowerCase().includes(search));
+  }
+  files.sort((a, b) => {
+    if (sort === 'title') return (a.title || '').localeCompare(b.title || '');
+    return sort === 'asc' ? (a.date || '').localeCompare(b.date || '') : (b.date || '').localeCompare(a.date || '');
+  });
+  const list = $('medicalFileList');
+  if (!list) return;
+  list.innerHTML = files.length ? files.map(item => `
+    <div class="item">
+      <div class="item-top">
+        <strong>${escapeHtml(item.title || 'Documento médico')}</strong>
+        <div class="actions inline-actions">
+          <button class="secondary" onclick="editMedicalFile('${item.id}')">Editar</button>
+          <button class="danger" onclick="removeItem('medicalFiles','${item.id}')">Excluir</button>
+        </div>
+      </div>
+      <small>${formatDate(item.date)}</small>
+      ${item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}
+      ${item.file ? `<div class="actions inline-actions"><a class="file-pill" href="${item.file.dataUrl}" target="_blank" rel="noopener">Visualizar</a><a class="file-pill" href="${item.file.dataUrl}" download="${escapeHtml(item.file.name)}">Baixar: ${escapeHtml(item.file.name)}</a></div>` : '<small>Sem arquivo anexado</small>'}
+    </div>
+  `).join('') : '<p class="muted">Nenhum arquivo médico cadastrado.</p>';
+}
+
+window.editMedicalFile = function(id) {
+  const item = currentChild().medicalFiles.find(file => file.id === id);
+  if (!item) return;
+  const title = prompt('Título do documento:', item.title || '');
+  if (title === null) return;
+  const date = prompt('Data no formato AAAA-MM-DD:', item.date || '');
+  if (date === null) return;
+  const description = prompt('Descrição / observações:', item.description || '');
+  if (description === null) return;
+  item.title = title.trim();
+  item.date = date.trim();
+  item.description = description.trim();
+  saveState();
+  renderAll();
+  showToast('Arquivo médico atualizado.');
+};
+
+function populateAlbumSelects() {
+  const child = currentChild();
+  const options = ['<option value="">Sem álbum</option>'].concat(child.albums.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`)).join('');
+  $('memoryAlbumSelect').innerHTML = options;
+  $('memoryPdfAlbum').innerHTML = child.albums.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('') || '<option value="">Nenhum álbum</option>';
+}
+
+function renderAlbums() {
+  const child = currentChild();
+  const buttons = [`<button class="album-chip ${activeAlbumFilter === 'all' ? 'active' : ''}" onclick="setAlbumFilter('all')">Todas</button>`,
+    `<button class="album-chip ${activeAlbumFilter === 'none' ? 'active' : ''}" onclick="setAlbumFilter('none')">Sem álbum</button>`]
+    .concat(child.albums.map(a => `<button class="album-chip ${activeAlbumFilter === a.id ? 'active' : ''}" onclick="setAlbumFilter('${a.id}')">${escapeHtml(a.name)}</button>`));
+  $('albumsRow').innerHTML = buttons.join('');
+}
+
+window.setAlbumFilter = function(albumId) {
+  activeAlbumFilter = albumId;
+  renderAlbums();
+  renderMemories();
+};
+
+function isImage(file) { return file && file.type && file.type.startsWith('image/'); }
+function isVideo(file) { return file && file.type && file.type.startsWith('video/'); }
+function isDocumentAsset(file) { return file && !isImage(file) && !isVideo(file); }
+function memoryAssets(memory) { return Array.isArray(memory.files) ? memory.files : (memory.file ? [memory.file] : []); }
+function firstAsset(memory) { return memoryAssets(memory)[0] || null; }
+function firstImageAsset(memory) { return memoryAssets(memory).find(isImage) || null; }
+function getAssetIcon(asset) {
+  if (isImage(asset)) return 'Foto';
+  if (isVideo(asset)) return 'Vídeo';
+  const ext = (asset?.name || '').split('.').pop()?.toUpperCase() || 'Arquivo';
+  return ext;
+}
+function triggerDownload(dataUrl, filename = 'arquivo') {
+  const link = document.createElement('a');
+  link.href = dataUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+async function shareAsset(asset) {
+  if (!asset) return;
+  try {
+    const blob = await (await fetch(asset.dataUrl)).blob();
+    const file = new File([blob], asset.name || 'arquivo', { type: asset.type || blob.type });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: asset.name || 'Arquivo Crescer Juntos' });
+    } else if (navigator.share) {
+      await navigator.share({ title: asset.name || 'Arquivo Crescer Juntos', text: 'Arquivo salvo no Crescer Juntos.' });
+    } else {
+      triggerDownload(asset.dataUrl, asset.name || 'arquivo');
+    }
+  } catch (error) {
+    console.warn(error);
+    triggerDownload(asset.dataUrl, asset.name || 'arquivo');
+  }
+}
+
+function renderMemories() {
+  const child = currentChild();
+  let memories = [...child.memories].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  if (activeAlbumFilter === 'none') memories = memories.filter(m => !m.albumId);
+  if (activeAlbumFilter !== 'all' && activeAlbumFilter !== 'none') memories = memories.filter(m => m.albumId === activeAlbumFilter);
+  const list = $('memoryList');
+  list.className = memoryView === 'list' ? 'memory-grid list-view' : 'memory-grid';
+  if (!memories.length) {
+    list.innerHTML = '<p class="muted">Nenhuma memória cadastrada nesse filtro.</p>';
+    return;
+  }
+  list.innerHTML = memories.map(m => {
+    const album = child.albums.find(a => a.id === m.albumId);
+    const assets = memoryAssets(m);
+    const cover = firstAsset(m);
+    let media = `<div class="memory-media" onclick="openMemoryViewer('${m.id}',0)">Sem foto</div>`;
+    if (cover) {
+      if (isImage(cover)) media = `<div class="memory-media" onclick="openMemoryViewer('${m.id}',0)"><img src="${cover.dataUrl}" alt="${escapeHtml(m.title || 'Memória')}"></div>`;
+      else if (isVideo(cover)) {
+        const videoCover = cover.thumbnail
+          ? `<img class="video-thumb" src="${cover.thumbnail}" alt="Capa do vídeo ${escapeHtml(m.title || 'Memória')}">`
+          : `<video src="${cover.dataUrl}" muted playsinline preload="metadata"></video>`;
+        media = `<div class="memory-media" onclick="openMemoryViewer('${m.id}',0)">${videoCover}<span class="play-badge">▶ vídeo</span></div>`;
+      } else media = `<div class="memory-media" onclick="openMemoryViewer('${m.id}',0)">${escapeHtml(getAssetIcon(cover))}</div>`;
+    }
+    const multiBadge = assets.length > 1 ? `<span class="multi-badge">▢▢ ${assets.length}</span>` : '';
+    return `
+      <article class="memory-card">
+        <div class="memory-media-wrap">
+          ${media}
+          ${multiBadge}
+          ${m.favorite ? '<span class="favorite-badge">♥</span>' : ''}
+        </div>
+        <div class="memory-content">
+          <span class="date">${formatDate(m.date)}</span>
+          <h4>${escapeHtml(m.title || 'Memória sem título')}</h4>
+          ${album ? `<small>Álbum: ${escapeHtml(album.name)}</small>` : '<small>Sem álbum</small>'}
+          ${m.description ? `<p>${escapeHtml(m.description)}</p>` : ''}
+          ${assets.length ? `<small>${assets.length} anexo(s)</small>` : '<small>Sem anexos</small>'}
+          <div class="memory-actions">
+            <button class="secondary" onclick="openMemoryViewer('${m.id}',0)">Abrir</button>
+            <button class="secondary" onclick="toggleFavorite('${m.id}')">${m.favorite ? 'Remover favorito' : 'Favoritar'}</button>
+            <button class="danger" onclick="removeItem('memories','${m.id}')">Excluir</button>
+          </div>
+        </div>
+      </article>`;
+  }).join('');
+}
+
+let activeMemoryViewerId = '';
+let activeMemoryAssetIndex = 0;
+
+function fillMemoryEditAlbumSelect(selectedAlbumId = '') {
+  const child = currentChild();
+  const select = $('memoryEditAlbumSelect');
+  if (!select) return;
+  select.innerHTML = ['<option value="">Sem álbum</option>'].concat(child.albums.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`)).join('');
+  select.value = selectedAlbumId || '';
+}
+
+window.openMemoryViewer = function(memoryId, index = 0) {
+  const memory = currentChild().memories.find(m => m.id === memoryId);
+  if (!memory) return;
+  activeMemoryViewerId = memoryId;
+  activeMemoryAssetIndex = Math.max(0, Math.min(index, memoryAssets(memory).length - 1));
+  fillMemoryEditAlbumSelect(memory.albumId);
+  const form = $('memoryEditForm');
+  form.elements.memoryId.value = memory.id;
+  form.elements.date.value = memory.date || '';
+  form.elements.title.value = memory.title || '';
+  form.elements.description.value = memory.description || '';
+  form.elements.favorite.value = String(!!memory.favorite);
+  form.elements.albumId.value = memory.albumId || '';
+  renderMemoryViewer();
+  $('memoryViewerModal').classList.remove('hidden');
+};
+
+function renderMemoryViewer() {
+  const memory = currentChild().memories.find(m => m.id === activeMemoryViewerId);
+  if (!memory) return;
+  const assets = memoryAssets(memory);
+  const asset = assets[activeMemoryAssetIndex];
+  const stage = $('memoryCarouselStage');
+  if (!asset) {
+    stage.innerHTML = '<div class="empty-stage">Sem anexos nesta memória.</div>';
+  } else if (isImage(asset)) {
+    stage.innerHTML = `<img src="${asset.dataUrl}" alt="${escapeHtml(asset.name || 'Foto da memória')}">`;
+  } else if (isVideo(asset)) {
+    stage.innerHTML = `<video src="${asset.dataUrl}" controls playsinline poster="${asset.thumbnail || ''}"></video>`;
+  } else {
+    stage.innerHTML = `<div class="document-stage"><strong>${escapeHtml(getAssetIcon(asset))}</strong><p>${escapeHtml(asset.name || 'Arquivo')}</p><a class="file-pill" href="${asset.dataUrl}" target="_blank" rel="noopener">Visualizar arquivo</a></div>`;
+  }
+  $('memoryAssetCounter').textContent = assets.length ? `${activeMemoryAssetIndex + 1} de ${assets.length}` : '0 de 0';
+  renderMemoryAttachmentList(memory);
+}
+
+function renderMemoryAttachmentList(memory) {
+  const assets = memoryAssets(memory);
+  $('memoryAttachmentList').innerHTML = assets.length ? `
+    <h4>Anexos</h4>
+    ${assets.map((asset, index) => `
+      <div class="attachment-item">
+        <button type="button" class="attachment-thumb" onclick="openMemoryViewer('${memory.id}',${index})">
+          ${isImage(asset) ? `<img src="${asset.dataUrl}" alt="${escapeHtml(asset.name)}">` : isVideo(asset) ? `<img src="${asset.thumbnail || ''}" alt="${escapeHtml(asset.name)}"><span>▶</span>` : `<strong>${escapeHtml(getAssetIcon(asset))}</strong>`}
+        </button>
+        <div>
+          <strong>${escapeHtml(asset.name || 'Anexo')}</strong>
+          <small>${asset.createdAt ? new Date(asset.createdAt).toLocaleDateString('pt-BR') : ''}</small>
+          <div class="actions inline-actions">
+            <button type="button" class="secondary" onclick="openMemoryViewer('${memory.id}',${index})">Visualizar</button>
+            <button type="button" class="secondary" onclick="downloadMemoryAsset('${memory.id}','${asset.id}')">Baixar</button>
+            <button type="button" class="secondary" onclick="shareMemoryAsset('${memory.id}','${asset.id}')">Compartilhar</button>
+            <label class="secondary tiny-file-label">Substituir<input type="file" hidden onchange="replaceMemoryAsset(event,'${memory.id}','${asset.id}')" /></label>
+            <button type="button" class="danger" onclick="deleteMemoryAsset('${memory.id}','${asset.id}')">Excluir</button>
+          </div>
+        </div>
+      </div>`).join('')}
+  ` : '<p class="muted">Nenhum anexo nesta memória.</p>';
+}
+
+function moveMemoryAsset(delta) {
+  const memory = currentChild().memories.find(m => m.id === activeMemoryViewerId);
+  if (!memory) return;
+  const total = memoryAssets(memory).length;
+  if (!total) return;
+  activeMemoryAssetIndex = (activeMemoryAssetIndex + delta + total) % total;
+  renderMemoryViewer();
+}
+
+function closeMemoryViewer() {
+  $('memoryViewerModal').classList.add('hidden');
+  $('memoryCarouselStage').innerHTML = '';
+  activeMemoryViewerId = '';
+  activeMemoryAssetIndex = 0;
+}
+
+async function saveMemoryEdits(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const memory = currentChild().memories.find(m => m.id === form.elements.memoryId.value);
+  if (!memory) return;
+  memory.date = form.elements.date.value;
+  memory.title = form.elements.title.value.trim();
+  memory.description = form.elements.description.value.trim();
+  memory.albumId = form.elements.albumId.value || '';
+  memory.favorite = form.elements.favorite.value === 'true';
+  const existing = memoryAssets(memory);
+  const availableSlots = Math.max(0, 5 - existing.length);
+  const newFiles = Array.from(form.elements.newFiles.files || []).slice(0, availableSlots);
+  if (newFiles.length) {
+    const assets = (await Promise.all(newFiles.map(fileToMemoryAsset))).filter(Boolean);
+    memory.files = existing.concat(assets).slice(0, 5);
+  } else {
+    memory.files = existing;
+  }
+  form.elements.newFiles.value = '';
+  saveState();
+  renderAll();
+  renderMemoryViewer();
+  showToast('Memória atualizada.');
+}
+
+window.downloadMemoryAsset = function(memoryId, assetId) {
+  const asset = memoryAssets(currentChild().memories.find(m => m.id === memoryId) || {}).find(a => a.id === assetId);
+  if (asset) triggerDownload(asset.dataUrl, asset.name || 'arquivo');
+};
+
+window.shareMemoryAsset = async function(memoryId, assetId) {
+  const asset = memoryAssets(currentChild().memories.find(m => m.id === memoryId) || {}).find(a => a.id === assetId);
+  if (asset) await shareAsset(asset);
+};
+
+window.replaceMemoryAsset = async function(event, memoryId, assetId) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const memory = currentChild().memories.find(m => m.id === memoryId);
+  if (!memory) return;
+  const assets = memoryAssets(memory);
+  const index = assets.findIndex(a => a.id === assetId);
+  if (index === -1) return;
+  assets[index] = await fileToMemoryAsset(file);
+  memory.files = assets;
+  saveState();
+  renderAll();
+  renderMemoryViewer();
+  showToast('Anexo substituído.');
+};
+
+window.deleteMemoryAsset = function(memoryId, assetId) {
+  const memory = currentChild().memories.find(m => m.id === memoryId);
+  if (!memory) return;
+  memory.files = memoryAssets(memory).filter(a => a.id !== assetId);
+  activeMemoryAssetIndex = Math.max(0, Math.min(activeMemoryAssetIndex, memory.files.length - 1));
+  saveState();
+  renderAll();
+  renderMemoryViewer();
+  showToast('Anexo excluído.');
+};
+
+function downloadAllCurrentMemoryAssets() {
+  const memory = currentChild().memories.find(m => m.id === activeMemoryViewerId);
+  if (!memory) return;
+  memoryAssets(memory).forEach((asset, index) => {
+    setTimeout(() => triggerDownload(asset.dataUrl, asset.name || `anexo-${index + 1}`), index * 300);
+  });
+  showToast('Downloads iniciados.');
+}
+
+window.openVideo = function(memoryId) {
+  const memory = currentChild().memories.find(m => m.id === memoryId);
+  const index = memory ? memoryAssets(memory).findIndex(isVideo) : -1;
+  if (memory && index >= 0) openMemoryViewer(memoryId, index);
+};
+
+window.openPhoto = function(memoryId) {
+  const memory = currentChild().memories.find(m => m.id === memoryId);
+  const index = memory ? memoryAssets(memory).findIndex(isImage) : -1;
+  if (memory && index >= 0) openMemoryViewer(memoryId, index);
+};
+
+window.toggleFavorite = function(memoryId) {
+  const memory = currentChild().memories.find(m => m.id === memoryId);
+  if (memory) {
+    memory.favorite = !memory.favorite;
+    saveState();
+    renderAll();
+  }
+};
+
+function renderManualMemorySelection() {
+  const child = currentChild();
+  const imageMemories = child.memories.filter(m => memoryAssets(m).some(isImage));
+  $('manualMemorySelection').innerHTML = imageMemories.length ? imageMemories.map(m => {
+    const cover = firstImageAsset(m);
+    return `<label><input type="checkbox" value="${m.id}" checked /> ${formatDate(m.date)} - ${escapeHtml(m.title || m.description || cover?.name || 'Memória')}</label>`;
+  }).join('') : '<p>Nenhuma memória com foto cadastrada.</p>';
+}
+
+function getSelectedImageMemoriesForPdf() {
+  const child = currentChild();
+  let memories = child.memories.filter(m => memoryAssets(m).some(isImage));
+  const filter = $('memoryPdfFilter').value;
+  if (filter === 'manual') {
+    const ids = qsa('#manualMemorySelection input:checked').map(input => input.value);
+    memories = memories.filter(m => ids.includes(m.id));
+  }
+  if (filter === 'period') {
+    const start = $('memoryPdfStart').value;
+    const end = $('memoryPdfEnd').value;
+    memories = memories.filter(m => (!start || (m.date || '') >= start) && (!end || (m.date || '') <= end));
+  }
+  if (filter === 'album') {
+    const albumId = $('memoryPdfAlbum').value;
+    memories = memories.filter(m => m.albumId === albumId);
+  }
+  return memories.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+}
+
+function renderFavorites() {
+  const child = currentChild();
+  const upcoming = [...child.events].filter(e => !e.date || e.date >= new Date().toISOString().slice(0,10)).sort((a,b) => (a.date || '').localeCompare(b.date || '')).slice(0,2);
+  $('favoriteUpcomingEvents').innerHTML = upcoming.length ? upcoming.map(e => `<div class="item"><strong>${escapeHtml(e.title || 'Evento')}</strong><p>${escapeHtml(e.type || 'Evento')} — ${formatDate(e.date)}</p></div>`).join('') : '<p class="muted">Nenhum próximo evento.</p>';
+  const recentMilestones = [...child.milestones].sort((a,b) => (b.date || '').localeCompare(a.date || '')).slice(0,3);
+  $('favoriteRecentMilestones').innerHTML = recentMilestones.length ? recentMilestones.map(item => `<div class="item"><strong>${escapeHtml(item.title || item.category)}</strong><p>${formatDate(item.date)}${item.value ? ' — ' + escapeHtml(item.value) : ''}</p></div>`).join('') : '<p class="muted">Nenhum registro recente.</p>';
+  const favorites = child.memories.filter(m => m.favorite).sort((a,b) => (b.date || '').localeCompare(a.date || '')).slice(0,6);
+  const favWrap = $('favoriteMemories');
+  favWrap.className = 'memory-grid list-view';
+  favWrap.innerHTML = favorites.length ? favorites.map(m => {
+    const asset = firstAsset(m);
+    const media = asset ? (isImage(asset) ? `<div class="memory-media"><img src="${asset.dataUrl}" alt="${escapeHtml(m.title || 'Memória')}"></div>` : isVideo(asset) ? `<div class="memory-media"><img src="${asset.thumbnail || ''}" alt="${escapeHtml(m.title || 'Vídeo')}"><span class="play-badge">▶</span></div>` : `<div class="memory-media">${escapeHtml(getAssetIcon(asset))}</div>`) : `<div class="memory-media">Sem mídia</div>`;
+    return `<article class="memory-card"><div class="memory-media-wrap">${media}<span class="favorite-badge">♥</span></div><div class="memory-content"><span class="date">${formatDate(m.date)}</span><h4>${escapeHtml(m.title || 'Memória')}</h4>${m.description ? `<p>${escapeHtml(m.description)}</p>` : ''}</div></article>`;
+  }).join('') : '<p class="muted">Nenhuma memória favorita cadastrada.</p>';
+  const totalFiles = child.memories.reduce((sum, m) => sum + memoryAssets(m).length, 0);
+  const stats = [
+    ['Memórias', child.memories.length],
+    ['Fotos / vídeos', totalFiles],
+    ['Dias desde nascimento', child.nascimento ? Math.max(0, Math.floor((Date.now() - new Date(child.nascimento + 'T12:00:00').getTime()) / 86400000)) : '-'],
+    ['Eventos', child.events.length]
+  ];
+  $('favoriteStats').innerHTML = stats.map(([label, value]) => `<div class="stat-card"><strong>${value}</strong><span>${escapeHtml(String(label))}</span></div>`).join('');
+}
+
+function renderProfileSettings() {
+  applyTheme();
+}
+
+function renderEvents() {
+  const child = currentChild();
+  const events = [...child.events].sort((a, b) => `${a.date || ''}${a.time || ''}`.localeCompare(`${b.date || ''}${b.time || ''}`));
+  $('eventList').innerHTML = events.length ? events.map(e => `
+    <div class="item">
+      <div class="item-top"><strong>${escapeHtml(e.title)}</strong><button class="danger" onclick="removeItem('events','${e.id}')">Excluir</button></div>
+      <p><b>${escapeHtml(e.type || 'Evento')}</b> • ${formatDate(e.date)} ${e.time ? 'às ' + escapeHtml(e.time) : ''}</p>
+      ${e.location ? `<p><b>Local:</b> ${escapeHtml(e.location)}</p>` : ''}
+      ${e.description ? `<p>${escapeHtml(e.description)}</p>` : ''}
+      <div class="actions"><button class="secondary" onclick="downloadIcs('${e.id}')">Adicionar ao calendário</button></div>
+    </div>
+  `).join('') : '<p class="muted">Nenhum evento cadastrado.</p>';
+}
+
+function populateMilestoneCategories() {
+  $('milestoneCategorySelect').innerHTML = DEFAULT_CATEGORIES.map(c => `<option>${escapeHtml(c)}</option>`).join('');
+}
+
+function renderMilestones() {
+  const child = currentChild();
+  const byCategory = child.milestones.reduce((acc, item) => {
+    (acc[item.category] ||= []).push(item);
+    return acc;
+  }, {});
+  const categories = Object.keys(byCategory).sort();
+  if (!categories.length) {
+    $('milestoneList').innerHTML = '<p class="muted">Nenhum acompanhamento cadastrado.</p>';
+    return;
+  }
+  $('milestoneList').innerHTML = categories.map(category => `
+    <h3 class="category-title">${escapeHtml(category)}</h3>
+    ${byCategory[category].sort((a,b) => (a.date || '').localeCompare(b.date || '')).map(item => `
+      <article class="item milestone-card">
+        ${item.photo ? `<img src="${item.photo.dataUrl}" alt="${escapeHtml(item.title || category)}">` : ''}
+        <div class="item-top"><strong>${escapeHtml(item.title || category)}</strong><button class="danger" onclick="removeItem('milestones','${item.id}')">Excluir</button></div>
+        <small>${formatDate(item.date)} ${item.value ? '• ' + escapeHtml(item.value) : ''}</small>
+        ${item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}
+      </article>
+    `).join('')}
+  `).join('');
+}
+
+window.removeItem = function(collection, id) {
+  const child = currentChild();
+  if (!Array.isArray(child[collection])) return;
+  child[collection] = child[collection].filter(item => item.id !== id);
+  saveState();
+  renderAll();
+  showToast('Item excluído.');
+};
+
+function renderAll() {
+  renderChildSelect();
+  fillChildForm();
+  renderHome();
+  renderMedications();
+  renderExams();
+  renderMedicalFiles();
+  populateAlbumSelects();
+  renderAlbums();
+  renderMemories();
+  renderManualMemorySelection();
+  renderFavorites();
+  renderProfileSettings();
+  renderEvents();
+  populateMilestoneCategories();
+  renderMilestones();
+}
+
+function addFormListeners() {
+  $('childSelect').addEventListener('change', event => {
+    state.activeChildId = event.target.value;
+    activeAlbumFilter = 'all';
+    saveState();
+    renderAll();
+  });
+
+  ['drawerChildSelect','drawerChildSelectMenu'].forEach(id => {
+    if ($(id)) $(id).addEventListener('change', event => {
+      state.activeChildId = event.target.value;
+      activeAlbumFilter = 'all';
+      saveState();
+      renderAll();
+    });
+  });
+
+  $('openSideMenu')?.addEventListener('click', openSideMenu);
+  $('closeSideMenu')?.addEventListener('click', closeSideMenu);
+  $('sideMenuBackdrop')?.addEventListener('click', closeSideMenu);
+  $('changePhotoFromHome')?.addEventListener('click', () => { switchTab('cadastro'); $('childForm').elements.profilePhoto.click(); });
+  $('goToCadastroBtn')?.addEventListener('click', () => switchTab('cadastro'));
+  $('editChildBtnMenu')?.addEventListener('click', () => { switchTab('cadastro', { closeMenu: true }); });
+
+  $('heroNotifyBtn')?.addEventListener('click', async () => {
+    if (!('Notification' in window)) return showToast('Este navegador não suporta notificações.');
+    const permission = await Notification.requestPermission();
+    showToast(permission === 'granted' ? 'Notificações ativadas.' : 'Notificações não autorizadas.');
+  });
+
+  $('newChildBtnPanel')?.addEventListener('click', () => $('newChildBtn').click());
+  $('newChildBtnMenu')?.addEventListener('click', () => { $('newChildBtn').click(); closeSideMenu(); });
+  $('openChildPdfBuilderProfile')?.addEventListener('click', () => { switchTab('inicio'); $('childPdfBuilder').classList.remove('hidden'); });
+  $('openMemoriesPdfProfile')?.addEventListener('click', () => { switchTab('memorias'); $('memoryPdfBuilder').classList.remove('hidden'); renderManualMemorySelection(); });
+  $('openEvolutionPdfProfile')?.addEventListener('click', () => generateEvolutionPdf());
+  $('makeQrBtnProfile')?.addEventListener('click', () => { switchTab('inicio'); generateQrCode(); });
+  $('exportBackupBtnProfile')?.addEventListener('click', exportBackup);
+  $('notifyBtnProfile')?.addEventListener('click', () => $('heroNotifyBtn')?.click());
+  $('drawerOpenRecordacoes')?.addEventListener('click', () => { switchTab('memorias', { closeMenu: true }); $('memoryPdfBuilder').classList.remove('hidden'); renderManualMemorySelection(); });
+  $('drawerOpenQr')?.addEventListener('click', () => { switchTab('inicio', { closeMenu: true }); generateQrCode(); });
+  $('drawerOpenBackup')?.addEventListener('click', () => { switchTab('inicio', { closeMenu: true }); document.querySelector('.backup-social-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+
+  ['themeSelect','themeSelectMenu'].forEach(id => { if ($(id)) $(id).addEventListener('change', e => setThemeSelection(e.target.value)); });
+  $('autoThemeToggle')?.addEventListener('change', e => { state.settings ||= {}; state.settings.autoTheme = e.target.checked; if (e.target.checked) state.settings.theme = 'auto'; saveState(); applyTheme(); });
+
+  $('newChildBtn').addEventListener('click', () => {
+    const child = emptyChild();
+    state.children.push(child);
+    state.activeChildId = child.id;
+    saveState();
+    renderAll();
+    switchTab('cadastro');
+    showToast('Nova criança criada. Preencha o cadastro.');
+  });
+
+  $('deleteChildBtn').addEventListener('click', () => {
+    if (state.children.length <= 1) {
+      state.children = [emptyChild()];
+      state.activeChildId = state.children[0].id;
+    } else if (confirm('Excluir esta criança e todos os dados vinculados?')) {
+      state.children = state.children.filter(c => c.id !== state.activeChildId);
+      state.activeChildId = state.children[0].id;
+    } else return;
+    saveState();
+    renderAll();
+    showToast('Cadastro excluído.');
+  });
+
+  $('childForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const child = currentChild();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    for (const [key, value] of data.entries()) {
+      if (key !== 'profilePhoto') child[key] = typeof value === 'string' ? value.trim() : value;
+    }
+    const file = form.elements.profilePhoto.files[0];
+    if (file) {
+      const savedFile = await fileToDataUrl(file);
+      child.profilePhoto = savedFile.dataUrl;
+    }
+    saveState();
+    renderAll();
+    showToast('Criança salva com sucesso.');
+  });
+
+  $('childForm').elements.profilePhoto.addEventListener('change', async event => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const savedFile = await fileToDataUrl(file);
+    setImagePreview($('profilePreview'), savedFile.dataUrl, 'Foto');
+  });
+
+  $('medForm').addEventListener('submit', event => {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(event.currentTarget).entries());
+    currentChild().medications.push({ id: uid(), ...data });
+    event.currentTarget.reset();
+    saveState();
+    renderAll();
+    showToast('Medicação adicionada.');
+  });
+
+  $('examForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = Object.fromEntries(new FormData(form).entries());
+    const selectedFile = form.elements.arquivo.files[0];
+    const file = selectedFile ? await storeExamAttachment(selectedFile) : null;
+    currentChild().exams.push({ id: uid(), data: data.data, nome: data.nome, descricao: data.descricao, file });
+    form.reset();
+    saveState();
+    renderAll();
+    showToast(file ? 'Exame e anexo salvos permanentemente.' : 'Exame adicionado.');
+  });
+
+  $('medicalFileForm')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = Object.fromEntries(new FormData(form).entries());
+    const file = await fileToDataUrl(form.elements.file.files[0]);
+    currentChild().medicalFiles.push({ id: uid(), date: data.date, title: data.title, description: data.description, file });
+    form.reset();
+    saveState();
+    renderAll();
+    showToast('Arquivo médico adicionado.');
+  });
+  $('medicalFileSearch')?.addEventListener('input', renderMedicalFiles);
+  $('medicalFileSort')?.addEventListener('change', renderMedicalFiles);
+
+  $('showMemoryFormBtn').addEventListener('click', () => $('memoryFormCard').classList.toggle('hidden'));
+  $('showAlbumFormBtn').addEventListener('click', () => $('albumFormCard').classList.toggle('hidden'));
+  $('showMemoryPdfBuilderBtn').addEventListener('click', () => {
+    $('memoryPdfBuilder').classList.remove('hidden');
+    renderManualMemorySelection();
+  });
+  $('closeMemoryPdfBuilder').addEventListener('click', () => $('memoryPdfBuilder').classList.add('hidden'));
+
+  $('gridViewBtn').addEventListener('click', () => {
+    memoryView = 'grid';
+    $('gridViewBtn').classList.add('active');
+    $('listViewBtn').classList.remove('active');
+    renderMemories();
+  });
+  $('listViewBtn').addEventListener('click', () => {
+    memoryView = 'list';
+    $('listViewBtn').classList.add('active');
+    $('gridViewBtn').classList.remove('active');
+    renderMemories();
+  });
+
+  $('albumForm').addEventListener('submit', event => {
+    event.preventDefault();
+    const name = new FormData(event.currentTarget).get('nome').trim();
+    if (!name) return;
+    currentChild().albums.push({ id: uid(), name });
+    event.currentTarget.reset();
+    saveState();
+    renderAll();
+    showToast('Álbum criado.');
+  });
+
+  $('memoryForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = Object.fromEntries(new FormData(form).entries());
+    const selectedFiles = Array.from(form.elements.arquivo.files || []).slice(0, 5);
+    const files = (await Promise.all(selectedFiles.map(fileToMemoryAsset))).filter(Boolean);
+    currentChild().memories.push({
+      id: uid(), date: data.data, title: data.titulo, description: data.descricao,
+      albumId: data.albumId || '', favorite: data.favorite === 'true', files
+    });
+    form.reset();
+    saveState();
+    renderAll();
+    showToast('Memória salva.');
+  });
+
+  $('memoryPdfFilter').addEventListener('change', () => {
+    $('manualMemorySelection').classList.toggle('hidden', $('memoryPdfFilter').value !== 'manual');
+  });
+  $('generateMemoryPdfBtn').addEventListener('click', generateMemoryAlbumPdf);
+
+  $('eventForm').addEventListener('submit', event => {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(event.currentTarget).entries());
+    currentChild().events.push({ id: uid(), title: data.titulo, type: data.tipo, date: data.data, time: data.hora, location: data.local, description: data.descricao });
+    event.currentTarget.reset();
+    saveState();
+    renderAll();
+    showToast('Evento adicionado.');
+  });
+
+  $('notifyBtn').addEventListener('click', async () => {
+    if (!('Notification' in window)) return showToast('Este navegador não suporta notificações.');
+    const permission = await Notification.requestPermission();
+    showToast(permission === 'granted' ? 'Notificações ativadas.' : 'Notificações não autorizadas.');
+  });
+
+  $('showMilestoneFormBtn').addEventListener('click', () => $('milestoneForm').classList.toggle('hidden'));
+  $('milestoneForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = Object.fromEntries(new FormData(form).entries());
+    const category = data.customCategory.trim() || data.category;
+    const photo = await fileToDataUrl(form.elements.photo.files[0]);
+    currentChild().milestones.push({ id: uid(), category, date: data.date, title: data.title, value: data.value, description: data.description, photo });
+    form.reset();
+    saveState();
+    renderAll();
+    showToast('Registro de evolução salvo.');
+  });
+  $('generateEvolutionPdfBtn').addEventListener('click', () => generateEvolutionPdf());
+
+  $('openChildPdfBuilder').addEventListener('click', () => $('childPdfBuilder').classList.remove('hidden'));
+  $('closeChildPdfBuilder').addEventListener('click', () => $('childPdfBuilder').classList.add('hidden'));
+  $('generateSelectedChildPdf').addEventListener('click', () => generateSelectedChildPdf());
+  $('makeQrBtn').addEventListener('click', generateQrCode);
+  $('copyQrLink').addEventListener('click', async () => {
+    await navigator.clipboard.writeText($('qrLink').value).catch(() => {});
+    showToast('Link copiado.');
+  });
+
+  $('exportBackupBtn').addEventListener('click', exportBackup);
+  $('importBackupInput').addEventListener('change', importBackup);
+
+  $('closeVideoModal').addEventListener('click', closeVideoModal);
+  $('videoModal').addEventListener('click', event => {
+    if (event.target.id === 'videoModal') closeVideoModal();
+  });
+  $('closePhotoModal').addEventListener('click', closePhotoModal);
+  $('photoModal').addEventListener('click', event => {
+    if (event.target.id === 'photoModal') closePhotoModal();
+  });
+
+  $('closeMemoryViewer')?.addEventListener('click', closeMemoryViewer);
+  $('prevMemoryAsset')?.addEventListener('click', () => moveMemoryAsset(-1));
+  $('nextMemoryAsset')?.addEventListener('click', () => moveMemoryAsset(1));
+  $('downloadAllMemoryAssets')?.addEventListener('click', downloadAllCurrentMemoryAssets);
+  $('memoryEditForm')?.addEventListener('submit', saveMemoryEdits);
+  $('memoryViewerModal')?.addEventListener('click', event => {
+    if (event.target.id === 'memoryViewerModal') closeMemoryViewer();
+  });
+}
+
+function closeVideoModal() {
+  const player = $('memoryVideoPlayer');
+  player.pause();
+  player.src = '';
+  $('videoModal').classList.add('hidden');
+}
+
+function closePhotoModal() {
+  $('memoryPhotoViewer').src = '';
+  $('photoModal').classList.add('hidden');
+}
+
+window.downloadIcs = function(eventId) {
+  const child = currentChild();
+  const e = child.events.find(item => item.id === eventId);
+  if (!e) return;
+  const date = (e.date || '').replace(/-/g, '');
+  const time = (e.time || '0900').replace(':', '') + '00';
+  const dt = `${date}T${time}`;
+  const ics = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//cReScer juntos//PT-BR', 'BEGIN:VEVENT',
+    `UID:${e.id}@crescer-juntos`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+    `DTSTART:${dt}`, `SUMMARY:${escapeIcs(e.title)}`, `LOCATION:${escapeIcs(e.location || '')}`,
+    `DESCRIPTION:${escapeIcs(e.description || '')}`, 'END:VEVENT', 'END:VCALENDAR'
+  ].join('\r\n');
+  downloadText(`${safeFileName(e.title || 'evento')}.ics`, ics, 'text/calendar');
+};
+
+function escapeIcs(value = '') {
+  return String(value).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+}
+
+function safeFileName(value = 'arquivo') {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'arquivo';
+}
+
+async function exportBackup() {
+  const exportState = JSON.parse(JSON.stringify(state));
+  for (const child of exportState.children || []) {
+    for (const exam of child.exams || []) {
+      if (!exam.file) continue;
+      const originalExam = state.children.find(item => item.id === child.id)?.exams.find(item => item.id === exam.id);
+      const blob = await getExamAttachmentBlob(originalExam?.file || exam.file);
+      if (blob) {
+        exam.file = {
+          ...exam.file,
+          name: exam.file.name || 'arquivo',
+          type: exam.file.type || blob.type || 'application/octet-stream',
+          size: Number(exam.file.size || blob.size || 0),
+          dataUrl: await blobToDataUrl(blob),
+          storage: 'backup-base64'
+        };
+      }
+    }
+  }
+  const content = JSON.stringify({ exportedAt: new Date().toISOString(), app: 'cReScer juntos', version: 4, state: exportState }, null, 2);
+  downloadText(`backup-crescer-juntos-${new Date().toISOString().slice(0,10)}.json`, content, 'application/json');
+  showToast('Backup exportado com os anexos dos exames.');
+}
+
+async function importBackup(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    const importedState = parsed.state || parsed;
+    if (!importedState.children || !Array.isArray(importedState.children)) throw new Error('Formato inválido');
+    await migrateLegacyExamAttachments(importedState);
+    state = importedState;
+    if (!state.activeChildId && state.children[0]) state.activeChildId = state.children[0].id;
+    saveState();
+    activeAlbumFilter = 'all';
+    renderAll();
+    showToast('Backup restaurado com os anexos dos exames.');
+  } catch (error) {
+    console.error(error);
+    showToast('Arquivo de backup inválido.');
+  } finally {
+    event.target.value = '';
+  }
+}
+
+function getPdf() {
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    showToast('Biblioteca de PDF ainda carregando. Tente novamente em alguns segundos.');
+    return null;
+  }
+  return new window.jspdf.jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+}
+
+let appLogoCache = null;
+async function getAppLogoDataUrl() {
+  if (appLogoCache) return appLogoCache;
+  try {
+    const response = await fetch('icons/icon-192.png');
+    const blob = await response.blob();
+    appLogoCache = await new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(blob);
+    });
+    return appLogoCache;
+  } catch (error) {
+    console.warn('Logo não carregado para PDF.', error);
+    return '';
+  }
+}
+
+async function addPdfHeader(doc, documentTitle, childName = '') {
+  const logo = await getAppLogoDataUrl();
+  if (logo) addImageSafe(doc, logo, 14, 12, 16, 16);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(22, 110, 229);
+  doc.setFontSize(18);
+  doc.text('Crescer Juntos', 34, 18);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(23, 33, 58);
+  doc.setFontSize(9.5);
+  doc.text('Guardando hoje, celebrando sempre.', 34, 24);
+  doc.setFontSize(8.5);
+  doc.text('Gerado em:', 153, 16);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(22, 110, 229);
+  doc.text(new Date().toLocaleDateString('pt-BR'), 153, 22);
+  doc.setDrawColor(22, 110, 229);
+  doc.setLineWidth(0.7);
+  doc.line(14, 32, 196, 32);
+
+  doc.setTextColor(23, 33, 58);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(17);
+  doc.text(documentTitle, 14, 48);
+  if (childName) {
+    doc.setTextColor(22, 110, 229);
+    doc.setFontSize(22);
+    doc.text(childName, 14, 60);
+    return 72;
+  }
+  return 60;
+}
+
+function addPdfFooter(doc, title) {
+  const pages = doc.internal.getNumberOfPages();
+  for (let page = 1; page <= pages; page += 1) {
+    doc.setPage(page);
+    doc.setFillColor(22, 110, 229);
+    doc.rect(0, 284, 210, 13, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text('Crescer Juntos', 14, 292);
+    doc.setFont('helvetica', 'normal');
+    doc.text(title, 105, 292, { align: 'center' });
+    doc.text(`Página ${page} de ${pages}`, 196, 292, { align: 'right' });
+  }
+}
+
+function ensurePage(doc, y, needed = 18) {
+  if (y + needed > 274) {
+    doc.addPage();
+    return 18;
+  }
+  return y;
+}
+
+function addSection(doc, title, y, color = [22, 110, 229]) {
+  y = ensurePage(doc, y, 22);
+  doc.setDrawColor(color[0], color[1], color[2]);
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(14, y, 182, 14, 4, 4, 'S');
+  doc.setTextColor(color[0], color[1], color[2]);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text(title, 20, y + 9);
+  return y + 21;
+}
+
+function addLine(doc, label, value, y) {
+  if (!value) return y;
+  y = ensurePage(doc, y, 9);
+  doc.setTextColor(23, 33, 58);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.text(`${label}:`, 20, y);
+  doc.setFont('helvetica', 'normal');
+  const text = doc.splitTextToSize(String(value), 120);
+  doc.text(text, 62, y);
+  return y + Math.max(6, text.length * 5);
+}
+
+function addParagraph(doc, text, y, width = 170, maxLines = 999) {
+  if (!text) return y;
+  doc.setTextColor(23, 33, 58);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  const lines = doc.splitTextToSize(String(text), width).slice(0, maxLines);
+  lines.forEach(line => {
+    y = ensurePage(doc, y, 6);
+    doc.text(line, 20, y);
+    y += 5;
+  });
+  return y + 2;
+}
+
+function addImageSafe(doc, dataUrl, x, y, maxW, maxH) {
+  try {
+    const props = doc.getImageProperties(dataUrl);
+    const ratio = Math.min(maxW / props.width, maxH / props.height);
+    const w = props.width * ratio;
+    const h = props.height * ratio;
+    doc.addImage(dataUrl, props.fileType || 'JPEG', x + (maxW - w) / 2, y, w, h);
+    return { w, h };
+  } catch (error) {
+    console.warn('Imagem não suportada no PDF', error);
+    doc.setFontSize(9);
+    doc.text('Imagem não suportada neste PDF.', x, y + 8);
+    return { w: 0, h: 10 };
+  }
+}
+
+async function addImageSafeForPdf(doc, dataUrl, x, y, maxW, maxH) {
+  const normalized = await normalizeImageForPdf(dataUrl);
+  return addImageSafe(doc, normalized, x, y, maxW, maxH);
+}
+
+function childDisplayName(child) {
+  return child.nome ? `${child.nome} ${child.sobrenome || ''}`.trim() : 'Criança sem nome';
+}
+
+async function generateSelectedChildPdf() {
+  const doc = getPdf();
+  if (!doc) return;
+  const child = currentChild();
+  const sections = qsa('input[name="pdfSection"]:checked').map(i => i.value);
+  let y = await addPdfHeader(doc, 'Resumo da criança', '');
+
+  const cardTop = 42;
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(222, 234, 248);
+  doc.roundedRect(14, cardTop, 182, 48, 6, 6, 'FD');
+  if (child.profilePhoto) {
+    await addImageSafeForPdf(doc, child.profilePhoto, 18, 48, 40, 40);
+  } else {
+    doc.setFillColor(234, 242, 255);
+    doc.roundedRect(18, 48, 40, 40, 4, 4, 'F');
+    doc.setTextColor(22, 110, 229);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('Foto', 38, 70, { align: 'center' });
+  }
+  doc.setTextColor(23, 33, 58);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('Resumo da criança', 66, 58);
+  doc.setTextColor(22, 110, 229);
+  doc.setFontSize(21);
+  doc.text(childDisplayName(child), 66, 70);
+  doc.setFillColor(234, 242, 255);
+  doc.roundedRect(66, 76, 56, 10, 5, 5, 'F');
+  doc.setTextColor(22, 110, 229);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.text(`Gerado em ${new Date().toLocaleDateString('pt-BR')}`, 94, 82.7, { align: 'center' });
+  y = 98;
+
+  if (sections.includes('fotoBio')) {
+    y = addSection(doc, 'PERFIL', y, [134, 107, 255]);
+    y = addLine(doc, 'Idade', calculateAgeText(child.nascimento), y);
+    y = addLine(doc, 'Mini bio', child.miniBio, y);
+  }
+
+  if (sections.includes('cadastro')) {
+    y = addSection(doc, 'CADASTRO', y, [22, 110, 229]);
+    y = addLine(doc, 'Nome', childDisplayName(child), y);
+    y = addLine(doc, 'Nascimento', formatDate(child.nascimento), y);
+    y = addLine(doc, 'Tipo sanguíneo', child.tipoSanguineo, y);
+    y = addLine(doc, 'Mãe', child.mae, y);
+    y = addLine(doc, 'Telefone da mãe', child.telefoneMae, y);
+    y = addLine(doc, 'Pai', child.pai, y);
+    y = addLine(doc, 'Telefone do pai', child.telefonePai, y);
+    y = addLine(doc, 'Contato de emergência', `${child.emergenciaNome || ''} ${child.emergenciaTelefone || ''}`.trim(), y);
+    y = addLine(doc, 'Pediatra', `${child.pediatraNome || ''} ${child.pediatraTelefone || ''}`.trim(), y);
+  }
+
+  if (sections.includes('saude')) {
+    y = addSection(doc, 'DADOS DE SAÚDE', y, [34, 178, 125]);
+    y = addLine(doc, 'Problemas de saúde', child.problemas || 'Nenhum informado', y);
+    y = addLine(doc, 'Alergias', child.alergias || 'Nenhuma informada', y);
+    y = addLine(doc, 'Observações gerais', child.observacoes, y);
+  }
+
+  if (sections.includes('medicacoes')) {
+    y = addSection(doc, 'MEDICAÇÕES', y, [134, 107, 255]);
+    if (!child.medications.length) y = addParagraph(doc, 'Nenhuma medicação cadastrada.', y);
+    child.medications.forEach(m => y = addParagraph(doc, `• ${m.nome || ''} | Dose: ${m.dose || '-'} | Frequência: ${m.frequencia || '-'} | Horário: ${m.horario || '-'}`, y));
+  }
+
+  if (sections.includes('exames')) {
+    y = addSection(doc, 'EXAMES', y, [255, 179, 0]);
+    if (!child.exams.length) y = addParagraph(doc, 'Nenhum exame cadastrado.', y);
+    child.exams.forEach(e => y = addParagraph(doc, `• ${formatDate(e.data)} - ${e.nome || ''}. ${e.descricao || ''} ${e.file ? 'Arquivo: ' + e.file.name : ''}`, y));
+  }
+
+  if (sections.includes('arquivosMedicos')) {
+    y = addSection(doc, 'ARQUIVOS MÉDICOS', y, [98, 114, 138]);
+    if (!child.medicalFiles.length) y = addParagraph(doc, 'Nenhum arquivo médico cadastrado.', y);
+    child.medicalFiles.sort((a,b) => (b.date || '').localeCompare(a.date || '')).forEach(file => {
+      y = addParagraph(doc, `• ${formatDate(file.date)} - ${file.title || 'Documento'}. ${file.description || ''}${file.file ? ' Arquivo: ' + file.file.name : ''}`, y);
+    });
+  }
+
+  if (sections.includes('agenda') || sections.includes('consultas') || sections.includes('vacinas') || sections.includes('proximos')) {
+    let events = [...child.events];
+    if (!sections.includes('agenda')) {
+      const filters = [];
+      if (sections.includes('consultas')) filters.push('Consulta médica');
+      if (sections.includes('vacinas')) filters.push('Vacina');
+      events = events.filter(e => filters.includes(e.type));
+    }
+    if (sections.includes('proximos')) {
+      const today = new Date().toISOString().slice(0,10);
+      events = events.filter(e => !e.date || e.date >= today);
+    }
+    y = addSection(doc, 'CALENDÁRIO/AGENDA', y, [255, 179, 0]);
+    if (!events.length) y = addParagraph(doc, 'Nenhum evento selecionado.', y);
+    events.sort((a,b) => (a.date || '').localeCompare(b.date || '')).forEach(e => y = addParagraph(doc, `• ${formatDate(e.date)} ${e.time || ''} - ${e.type || 'Evento'}: ${e.title || ''}. ${e.location ? 'Local: ' + e.location + '. ' : ''}${e.description || ''}`, y));
+  }
+
+  if (sections.includes('evolucao')) {
+    y = addSection(doc, 'MARCOS & EVOLUÇÃO', y, [34, 178, 125]);
+    if (!child.milestones.length) y = addParagraph(doc, 'Nenhum marco cadastrado.', y);
+    child.milestones.sort((a,b) => (a.date || '').localeCompare(b.date || '')).forEach(m => y = addParagraph(doc, `• ${formatDate(m.date)} - ${m.category}: ${m.title || ''} ${m.value ? '(' + m.value + ')' : ''}. ${m.description || ''}`, y));
+  }
+
+  if (sections.includes('memoriasFavoritas')) {
+    y = addSection(doc, 'MEMÓRIAS FAVORITAS/PRINCIPAIS', y, [255, 111, 174]);
+    const memories = child.memories.filter(m => m.favorite).slice(0, 12);
+    if (!memories.length) y = addParagraph(doc, 'Nenhuma memória favorita cadastrada.', y);
+    memories.forEach(m => y = addParagraph(doc, `• ${formatDate(m.date)} - ${m.title || 'Memória'}: ${m.description || ''}`, y));
+  }
+
+  y = ensurePage(doc, y, 22);
+  doc.setFillColor(245, 236, 252);
+  doc.roundedRect(14, y, 182, 18, 5, 5, 'F');
+  doc.setTextColor(134, 107, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.text('Acompanhar cada fase é construir histórias que ficam para sempre.', 105, y + 11, { align: 'center' });
+
+  addPdfFooter(doc, 'Resumo da criança');
+  doc.save(`resumo-${safeFileName(childDisplayName(child))}.pdf`);
+  showToast('PDF da criança criado.');
+}
+
+async function generateMemoryAlbumPdf() {
+  const doc = getPdf();
+  if (!doc) return;
+  const child = currentChild();
+  const memories = getSelectedImageMemoriesForPdf();
+  if (!memories.length) return showToast('Nenhuma memória com foto encontrada para o PDF.');
+
+  const photoEntries = [];
+  memories.forEach(memory => {
+    memoryAssets(memory).filter(isImage).forEach(asset => photoEntries.push({ memory, asset }));
+  });
+  if (!photoEntries.length) return showToast('Nenhuma foto encontrada para o PDF.');
+
+  let coverData = '';
+  const coverSource = $('memoryPdfCoverSource').value;
+  if (coverSource === 'profile') coverData = child.profilePhoto;
+  if (coverSource === 'first') coverData = photoEntries[0].asset.dataUrl;
+  if (coverSource === 'upload') {
+    const file = $('memoryPdfCoverUpload').files[0];
+    if (file) coverData = (await fileToDataUrl(file)).dataUrl;
+  }
+
+  doc.setFillColor(244, 248, 255);
+  doc.rect(0, 0, 210, 297, 'F');
+  await addPdfHeader(doc, 'Recordações', childDisplayName(child));
+  if (coverData) await addImageSafeForPdf(doc, coverData, 30, 78, 150, 145);
+  doc.setTextColor(23, 33, 58);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(11);
+  doc.text(`Criado em ${new Date().toLocaleDateString('pt-BR')}`, 105, 245, { align: 'center' });
+
+  const slots = [{ x: 16, y: 24 }, { x: 16, y: 154 }];
+  for (let index = 0; index < photoEntries.length; index += 1) {
+    const { memory, asset } = photoEntries[index];
+    if (index % 2 === 0) doc.addPage();
+    const slot = slots[index % 2];
+    await addImageSafeForPdf(doc, asset.dataUrl, slot.x, slot.y, 178, 82);
+    doc.setTextColor(23, 33, 58);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10.5);
+    doc.text(`${formatDate(memory.date)} - ${memory.title || 'Memória'}`, slot.x, slot.y + 91);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.8);
+    const desc = doc.splitTextToSize(memory.description || '', 178).slice(0, 30);
+    doc.text(desc, slot.x, slot.y + 99);
+  }
+
+  addPdfFooter(doc, 'Recordações');
+  doc.save(`recordacoes-${safeFileName(childDisplayName(child))}.pdf`);
+  showToast('Recordações criadas.');
+}
+
+async function generateEvolutionPdf() {
+  const doc = getPdf();
+  if (!doc) return;
+  const child = currentChild();
+  if (!child.milestones.length) return showToast('Nenhum registro em Marcos & Evolução.');
+  let y = await addPdfHeader(doc, 'Evolução e Marcos', childDisplayName(child));
+  if (child.profilePhoto) {
+    await addImageSafeForPdf(doc, child.profilePhoto, 156, 42, 38, 38);
+  }
+  const grouped = child.milestones.reduce((acc, m) => ((acc[m.category] ||= []).push(m), acc), {});
+  Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).forEach(([category, items]) => {
+    y = addSection(doc, category, y, [34, 178, 125]);
+    const sorted = items.sort((a,b) => (a.date || '').localeCompare(b.date || ''));
+    sorted.forEach(item => {
+      y = addParagraph(doc, `• ${formatDate(item.date)} - ${item.title || category}${item.value ? ': ' + item.value : ''}. ${item.description || ''}`, y);
+      if (item.photo) {
+        y = ensurePage(doc, y, 42);
+        addImageSafe(doc, item.photo.dataUrl, 20, y, 52, 36);
+        y += 42;
+      }
+    });
+    const numericValues = sorted.map(item => parseFloat(String(item.value || '').replace(',', '.'))).filter(n => !Number.isNaN(n));
+    if (numericValues.length) {
+      const first = numericValues[0];
+      const last = numericValues[numericValues.length - 1];
+      y = addParagraph(doc, `Estatística simples: primeiro valor ${first}; último valor ${last}; variação ${Number((last - first).toFixed(2))}.`, y);
+    }
+  });
+  addPdfFooter(doc, 'Evolução e Marcos');
+  doc.save(`resumo-evolutivo-${safeFileName(childDisplayName(child))}.pdf`);
+  showToast('Resumo Evolutivo criado.');
+}
+
+function generateQrCode() {
+  const child = currentChild();
+  const compact = {
+    nome: childDisplayName(child), nascimento: formatDate(child.nascimento), tipoSanguineo: child.tipoSanguineo,
+    alergias: child.alergias, problemas: child.problemas, mae: child.mae, telefoneMae: child.telefoneMae,
+    pai: child.pai, telefonePai: child.telefonePai, emergencia: `${child.emergenciaNome || ''} ${child.emergenciaTelefone || ''}`.trim(),
+    pediatra: `${child.pediatraNome || ''} ${child.pediatraTelefone || ''}`.trim(),
+    medicacoes: child.medications.map(m => `${m.nome} - ${m.dose || ''} - ${m.frequencia || ''}`).slice(0, 8),
+    proximosEventos: child.events.filter(e => !e.date || e.date >= new Date().toISOString().slice(0,10)).slice(0, 8).map(e => `${formatDate(e.date)} - ${e.type}: ${e.title}`)
+  };
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(compact))));
+  const link = `${location.origin}${location.pathname}#resumo=${encoded}`;
+  $('qrBox').classList.remove('hidden');
+  $('qrLink').value = link;
+  $('qrCodeCanvas').innerHTML = '';
+  if (window.QRCode) {
+    new QRCode($('qrCodeCanvas'), { text: link, width: 190, height: 190 });
+    showToast('QR Code criado.');
+  } else {
+    showToast('Biblioteca de QR Code ainda carregando.');
+  }
+}
+
+function maybeRenderSharedSummary() {
+  if (!location.hash.startsWith('#resumo=')) return false;
+  try {
+    const data = JSON.parse(decodeURIComponent(escape(atob(location.hash.replace('#resumo=', '')))));
+    document.body.innerHTML = `
+      <main class="layout">
+        <article class="card">
+          <h1>Resumo da criança</h1>
+          <p>Informações principais compartilhadas via cReScer juntos.</p>
+          <div class="list">
+            ${Object.entries(data).map(([key, value]) => Array.isArray(value)
+              ? `<div class="item"><strong>${escapeHtml(labelFromKey(key))}</strong>${value.map(v => `<p>• ${escapeHtml(v)}</p>`).join('') || '<p>-</p>'}</div>`
+              : `<div class="item"><strong>${escapeHtml(labelFromKey(key))}</strong><p>${escapeHtml(value || '-')}</p></div>`).join('')}
+          </div>
+          <div class="actions"><button class="primary" onclick="window.print()">Imprimir / salvar em PDF</button></div>
+        </article>
+      </main>`;
+    return true;
+  } catch (error) {
+    console.error(error);
+    return false;
+  }
+}
+
+function labelFromKey(key) {
+  const labels = { nome: 'Nome', nascimento: 'Nascimento', tipoSanguineo: 'Tipo sanguíneo', alergias: 'Alergias', problemas: 'Problemas de saúde', mae: 'Mãe', telefoneMae: 'Telefone da mãe', pai: 'Pai', telefonePai: 'Telefone do pai', emergencia: 'Emergência', pediatra: 'Pediatra', medicacoes: 'Medicações', proximosEventos: 'Próximos eventos' };
+  return labels[key] || key;
+}
+
+async function init() {
+  if (maybeRenderSharedSummary()) return;
+  registerServiceWorker();
+  initTabs();
+  addFormListeners();
+  const migrated = await migrateLegacyExamAttachments(state);
+  if (migrated) saveState();
+  renderAll();
+}
+
+document.addEventListener('DOMContentLoaded', init);
