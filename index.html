@@ -5,20 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>cReScer juntos</title>
   <meta name="theme-color" content="#4d8df7" />
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-  <meta http-equiv="Pragma" content="no-cache" />
-  <meta http-equiv="Expires" content="0" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="cReScer" />
-  <link rel="manifest" href="manifest.json?v=18" />
+  <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/favicon.png" />
-  <link rel="stylesheet" href="styles.css?v=18" />
+  <link rel="stylesheet" href="styles.css?v=19" />
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script defer src="growth-reference.js?v=18"></script>
-  <script defer src="app.js?v=18"></script>
+  <script defer src="growth-reference.js"></script>
+  <script defer src="app.js?v=19"></script>
 </head>
 <body>
   <header class="app-header">
@@ -87,7 +84,7 @@
           <button type="button" class="home-nav-card" data-tab-target="cadastro"><span class="home-nav-icon">👶</span><span>Cadastro</span></button>
           <button type="button" class="home-nav-card" data-tab-target="saude"><span class="home-nav-icon">💙</span><span>Saúde</span></button>
           <button type="button" class="home-nav-card active-card" data-tab-target="memorias"><span class="home-nav-icon">🖼️</span><span>Memórias</span></button>
-          <button type="button" class="home-nav-card" data-tab-target="agenda"><span class="home-nav-icon">📅</span><span>Eventos</span></button>
+          <button type="button" class="home-nav-card" data-tab-target="agenda"><span class="home-nav-icon">📅</span><span>Calendário/Eventos</span></button>
           <button type="button" class="home-nav-card full-width" data-tab-target="evolucao"><span class="home-nav-icon">📈</span><span>Evolução</span></button>
         </div>
 
@@ -158,7 +155,6 @@
             </label>
           </div>
         </article>
-        <div class="home-signature">— cReSer Juntos —</div>
       </div>
     </section>
 
@@ -229,7 +225,7 @@
             <label>Data do exame<input name="data" type="date" /></label>
             <label>Nome do exame<input name="nome" required /></label>
             <label>Descrição<textarea name="descricao" rows="3"></textarea></label>
-            <label>Anexar arquivo<input name="arquivo" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx,image/*,application/pdf" /></label>
+            <label>Anexar arquivo<input name="arquivo" type="file" accept=".pdf,.jpg,.jpeg,.png,.heic,.doc,.docx,image/*,application/pdf" /></label>
             <button class="primary" type="submit">Adicionar exame</button>
           </form>
           <div id="examList" class="list"></div>
@@ -241,7 +237,7 @@
         <form id="medicalFileForm" class="grid-form compact">
           <label>Data<input name="date" type="date" /></label>
           <label>Título do documento<input name="title" placeholder="Ex.: Exame de sangue" required /></label>
-          <label>Anexar arquivo<input name="file" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx,image/*,application/pdf" /></label>
+          <label>Anexar arquivo<input name="file" type="file" accept=".pdf,.jpg,.jpeg,.png,.heic,.doc,.docx,image/*,application/pdf" /></label>
           <label class="wide">Descrição / observações<textarea name="description" rows="3" placeholder="Ex.: Hemograma solicitado pelo pediatra."></textarea></label>
           <div class="actions wide"><button type="submit" class="primary">Adicionar arquivo médico</button></div>
         </form>
@@ -287,7 +283,7 @@
           <label>Álbum<select name="albumId" id="memoryAlbumSelect"></select></label>
           <label>Favoritar<select name="favorite"><option value="false">Não</option><option value="true">Sim</option></select></label>
           <label class="wide">Descrição<textarea name="descricao" rows="3" placeholder="Ex.: Hoje falou mamãe."></textarea></label>
-          <label class="wide">Adicionar fotos, vídeos ou arquivos<input name="arquivo" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,image/*,video/*,.pdf,.doc,.docx" multiple /><small>Limite inicial: até 5 anexos por memória.</small></label>
+          <label class="wide">Adicionar fotos, vídeos ou arquivos<input name="arquivo" type="file" accept="image/*,video/*,.pdf,.doc,.docx" multiple /><small>Limite inicial: até 5 anexos por memória.</small></label>
           <div class="actions wide"><button type="submit" class="primary">Salvar memória</button></div>
         </form>
       </article>
@@ -506,13 +502,6 @@
     <span>Para sincronização real entre dispositivos e PDF completo por QR Code, conectar Firebase ou Supabase.</span>
   </footer>
 
-  <div id="mediaLoadingOverlay" class="media-loading-overlay hidden" role="status" aria-live="polite">
-    <div class="media-loading-card">
-      <span class="media-spinner" aria-hidden="true"></span>
-      <span id="mediaLoadingText">Carregando imagem...</span>
-    </div>
-  </div>
-
   <div id="memoryViewerModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Visualização da memória">
     <div class="modal-card memory-viewer-card">
       <button type="button" id="closeMemoryViewer" class="modal-close">Fechar</button>
@@ -529,7 +518,7 @@
         <label>Álbum<select name="albumId" id="memoryEditAlbumSelect"></select></label>
         <label>Favorito<select name="favorite"><option value="false">Não</option><option value="true">Sim</option></select></label>
         <label class="wide">Descrição<textarea name="description" rows="3"></textarea></label>
-        <label class="wide">Adicionar novos anexos<input name="newFiles" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,image/*,video/*,.pdf,.doc,.docx" multiple /></label>
+        <label class="wide">Adicionar novos anexos<input name="newFiles" type="file" accept="image/*,video/*,.pdf,.doc,.docx" multiple /></label>
         <div class="actions wide">
           <button type="submit" class="primary">Salvar alterações</button>
           <button type="button" id="downloadAllMemoryAssets" class="secondary">Baixar todos</button>
@@ -550,8 +539,7 @@
   <div id="photoModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Visualização de foto">
     <div class="modal-card photo-modal-card">
       <button type="button" id="closePhotoModal" class="modal-close">Fechar</button>
-      <div id="photoViewerError" class="media-error hidden"></div>
-      <div id="photoViewerStage" class="photo-viewer-stage"></div>
+      <img id="memoryPhotoViewer" alt="Foto da memória" />
     </div>
   </div>
 
