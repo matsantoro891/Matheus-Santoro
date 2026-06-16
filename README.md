@@ -43,3 +43,16 @@ Os anexos de Saúde > Exames agora são armazenados permanentemente em IndexedDB
 - Ao iniciar o PWA, os arquivos são recuperados do IndexedDB e as URLs temporárias de visualização são recriadas.
 - Backups incluem todos os arquivos em Base64 e a restauração devolve os conteúdos ao IndexedDB.
 - O aplicativo solicita armazenamento persistente ao navegador quando o recurso está disponível.
+
+
+## Atualização v15 — visualização de imagens no celular
+
+- Memórias e Exames recuperam a imagem original diretamente do IndexedDB antes de abrir o visualizador.
+- O object URL é criado somente durante a visualização e revogado ao fechar ou trocar de item.
+- Há fallback para Base64 quando o object URL não é aceito pelo navegador.
+- O modal só é exibido depois do carregamento da imagem; falhas mostram mensagem amigável.
+- No celular, o carrossel usa swipe horizontal e oculta os botões Anterior/Próxima.
+- No computador, os botões e as setas do teclado continuam disponíveis.
+- Miniaturas otimizadas são salvas no IndexedDB e usadas na grade.
+- Backup e restauração continuam incluindo os arquivos originais e suas miniaturas.
+- Texto discreto “— cReSer Juntos —” adicionado ao final da Home.

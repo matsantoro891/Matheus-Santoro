@@ -16,8 +16,11 @@ let memoryView = 'grid';
 let activeAlbumFilter = 'all';
 let toastTimer = null;
 const runtimeObjectUrls = new Set();
-const memoryAssetDisplayUrlCache = new Map();
-let memoryViewerRenderToken = 0;
+let activeMemoryViewerObjectUrl = '';
+let activePhotoViewerObjectUrl = '';
+let mediaViewerRequestToken = 0;
+let carouselTouchStartX = 0;
+let carouselTouchStartY = 0;
 
 function uid() {
   return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
@@ -250,6 +253,167 @@ function dataUrlToBlob(dataUrl) {
   return new Blob([bytes], { type: mime });
 }
 
+function showMediaLoading(message = 'Carregando imagem...') {
+  const overlay = $('mediaLoadingOverlay');
+  if (!overlay) return;
+  const text = $('mediaLoadingText');
+  if (text) text.textContent = message;
+  overlay.classList.remove('hidden');
+}
+
+function hideMediaLoading() {
+  $('mediaLoadingOverlay')?.classList.add('hidden');
+}
+
+function revokeObjectUrl(url) {
+  if (url && String(url).startsWith('blob:')) {
+    try { URL.revokeObjectURL(url); } catch (error) { console.warn(error); }
+  }
+}
+
+function setActiveMemoryViewerUrl(url = '') {
+  revokeObjectUrl(activeMemoryViewerObjectUrl);
+  activeMemoryViewerObjectUrl = url;
+}
+
+function setActivePhotoViewerUrl(url = '') {
+  revokeObjectUrl(activePhotoViewerObjectUrl);
+  activePhotoViewerObjectUrl = url;
+}
+
+function inferMimeFromName(name = '') {
+  const ext = String(name).split('.').pop().toLowerCase();
+  const map = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+    heic: 'image/heic', heif: 'image/heif', gif: 'image/gif', pdf: 'application/pdf'
+  };
+  return map[ext] || '';
+}
+
+function blobWithUsableType(blob, ref = {}) {
+  if (!blob) return null;
+  const type = blob.type && blob.type !== 'application/octet-stream'
+    ? blob.type
+    : (ref.type || inferMimeFromName(ref.name));
+  if (!type || type === blob.type) return blob;
+  return new Blob([blob], { type });
+}
+
+function waitForImageLoad(src, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    let finished = false;
+    const timer = setTimeout(() => {
+      if (finished) return;
+      finished = true;
+      reject(new Error('Tempo excedido ao carregar a imagem.'));
+    }, timeoutMs);
+    const done = (fn, value) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      fn(value);
+    };
+    img.onload = () => {
+      if (img.decode) {
+        img.decode().catch(() => {}).finally(() => done(resolve, img));
+      } else {
+        done(resolve, img);
+      }
+    };
+    img.onerror = () => done(reject, new Error('Formato de imagem não suportado ou arquivo danificado.'));
+    img.src = src;
+  });
+}
+
+function waitForVideoMetadata(src, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    let finished = false;
+    const timer = setTimeout(() => {
+      if (finished) return;
+      finished = true;
+      video.src = '';
+      reject(new Error('Tempo excedido ao carregar o vídeo.'));
+    }, timeoutMs);
+    const done = (fn, value) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      video.src = '';
+      fn(value);
+    };
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    video.onloadedmetadata = () => done(resolve, true);
+    video.onerror = () => done(reject, new Error('Não foi possível carregar o vídeo.'));
+    video.src = src;
+  });
+}
+
+async function createImageThumbnailBlob(blob, maxSize = 480) {
+  if (!blob || !String(blob.type || '').startsWith('image/')) return null;
+  let objectUrl = '';
+  try {
+    objectUrl = URL.createObjectURL(blob);
+    const image = await waitForImageLoad(objectUrl, 12000);
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    if (!width || !height) return null;
+    const scale = Math.min(1, maxSize / Math.max(width, height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const context = canvas.getContext('2d');
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    if (canvas.toBlob) {
+      return await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+    }
+    return dataUrlToBlob(canvas.toDataURL('image/jpeg', 0.8));
+  } catch (error) {
+    console.warn('Não foi possível gerar miniatura.', error);
+    return null;
+  } finally {
+    revokeObjectUrl(objectUrl);
+  }
+}
+
+async function preparePersistentImageSource(ref) {
+  const blob = blobWithUsableType(await getExamAttachmentBlob(ref), ref || {});
+  if (!blob) throw new Error('Arquivo de imagem não encontrado no armazenamento local.');
+  let objectUrl = URL.createObjectURL(blob);
+  try {
+    await waitForImageLoad(objectUrl);
+    return { src: objectUrl, objectUrl };
+  } catch (firstError) {
+    revokeObjectUrl(objectUrl);
+    objectUrl = '';
+    const dataUrl = await blobToDataUrl(blob);
+    await waitForImageLoad(dataUrl);
+    return { src: dataUrl, objectUrl: '' };
+  }
+}
+
+async function preparePersistentVideoSource(ref) {
+  const blob = blobWithUsableType(await getExamAttachmentBlob(ref), ref || {});
+  if (!blob) throw new Error('Arquivo de vídeo não encontrado no armazenamento local.');
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    await waitForVideoMetadata(objectUrl);
+    return { src: objectUrl, objectUrl };
+  } catch (error) {
+    revokeObjectUrl(objectUrl);
+    throw error;
+  }
+}
+
+function viewerErrorHtml(message) {
+  return `<div class="media-error"><strong>Não foi possível exibir este arquivo.</strong><p>${escapeHtml(message || 'Tente novamente ou substitua o anexo.')}</p></div>`;
+}
+
 function createRuntimeObjectUrl(blob) {
   if (!blob) return '';
   const url = URL.createObjectURL(blob);
@@ -260,98 +424,6 @@ function createRuntimeObjectUrl(blob) {
 function revokeRuntimeObjectUrls() {
   runtimeObjectUrls.forEach(url => URL.revokeObjectURL(url));
   runtimeObjectUrls.clear();
-  memoryAssetDisplayUrlCache.clear();
-}
-
-async function resolveMemoryAssetDisplayUrl(asset) {
-  if (!asset) return '';
-  const cacheKey = asset.id || `${asset.name || 'anexo'}-${asset.size || 0}`;
-  if (memoryAssetDisplayUrlCache.has(cacheKey)) return memoryAssetDisplayUrlCache.get(cacheKey);
-
-  if (asset.dataUrl && String(asset.dataUrl).startsWith('data:')) {
-    memoryAssetDisplayUrlCache.set(cacheKey, asset.dataUrl);
-    return asset.dataUrl;
-  }
-
-  const blob = await getExamAttachmentBlob(asset);
-  if (blob) {
-    const dataUrl = await blobToDataUrl(blob);
-    memoryAssetDisplayUrlCache.set(cacheKey, dataUrl);
-    return dataUrl;
-  }
-
-  if (asset.dataUrl && String(asset.dataUrl).startsWith('blob:')) {
-    try {
-      const fetchedBlob = await (await fetch(asset.dataUrl)).blob();
-      const dataUrl = await blobToDataUrl(fetchedBlob);
-      memoryAssetDisplayUrlCache.set(cacheKey, dataUrl);
-      return dataUrl;
-    } catch {
-      return '';
-    }
-  }
-
-  return asset.dataUrl || '';
-}
-
-async function resolveMemoryAssetMediaUrl(asset) {
-  if (!asset) return { url: '', poster: '' };
-  if (isImage(asset)) {
-    return { url: await resolveMemoryAssetDisplayUrl(asset), poster: '' };
-  }
-  const cacheKey = `${asset.id || asset.name || 'video'}-media`;
-  if (memoryAssetDisplayUrlCache.has(cacheKey)) {
-    const cached = memoryAssetDisplayUrlCache.get(cacheKey);
-    return typeof cached === 'object' ? cached : { url: cached, poster: asset.thumbnail || '' };
-  }
-  const blob = await getExamAttachmentBlob(asset);
-  if (blob) {
-    const url = createRuntimeObjectUrl(blob);
-    const result = { url, poster: asset.thumbnail || '' };
-    memoryAssetDisplayUrlCache.set(cacheKey, result);
-    return result;
-  }
-  if (asset.dataUrl) {
-    const result = { url: asset.dataUrl, poster: asset.thumbnail || '' };
-    memoryAssetDisplayUrlCache.set(cacheKey, result);
-    return result;
-  }
-  return { url: '', poster: '' };
-}
-
-function waitForMediaLoad(element) {
-  return new Promise((resolve, reject) => {
-    if (element.tagName === 'IMG') {
-      if (element.complete && element.naturalWidth > 0) return resolve();
-      element.addEventListener('load', () => resolve(), { once: true });
-      element.addEventListener('error', () => reject(new Error('Falha ao carregar imagem.')), { once: true });
-      return;
-    }
-    if (element.tagName === 'VIDEO') {
-      if (element.readyState >= 2) return resolve();
-      element.addEventListener('loadeddata', () => resolve(), { once: true });
-      element.addEventListener('error', () => reject(new Error('Falha ao carregar vídeo.')), { once: true });
-      return;
-    }
-    resolve();
-  });
-}
-
-function setMemoryCarouselLoading(stage, message = 'Carregando...') {
-  stage.replaceChildren();
-  const loading = document.createElement('div');
-  loading.className = 'memory-stage-loading';
-  loading.setAttribute('aria-live', 'polite');
-  loading.textContent = message;
-  stage.appendChild(loading);
-}
-
-function setMemoryCarouselError(stage, message = 'Não foi possível carregar a imagem.') {
-  stage.replaceChildren();
-  const error = document.createElement('div');
-  error.className = 'empty-stage';
-  error.textContent = message;
-  stage.appendChild(error);
 }
 
 function fileRefUrl(ref) {
@@ -419,6 +491,9 @@ async function storeLocalFile(file, existingId = '', extra = {}) {
   if (!thumbnailBlob && extra.thumbnailDataUrl && String(extra.thumbnailDataUrl).startsWith('data:')) {
     thumbnailBlob = dataUrlToBlob(extra.thumbnailDataUrl);
   }
+  if (!thumbnailBlob && String(type).startsWith('image/')) {
+    thumbnailBlob = await createImageThumbnailBlob(blob).catch(() => null);
+  }
   const metadata = {
     ...extra,
     id,
@@ -450,8 +525,15 @@ async function hydrateLocalFileRef(ref, context = {}) {
     return storeLocalFile(file, context.id || '', context);
   }
   if (ref.storage === 'indexeddb' && ref.id) {
-    const record = await getExamAttachmentRecord(ref.id).catch(() => null);
+    let record = await getExamAttachmentRecord(ref.id).catch(() => null);
     if (!record?.blob) return { ...ref, dataUrl: '', thumbnail: '' };
+    if (!record.thumbnailBlob && String(ref.type || record.type || record.blob.type || '').startsWith('image/')) {
+      const generatedThumbnail = await createImageThumbnailBlob(record.blob).catch(() => null);
+      if (generatedThumbnail) {
+        record = { ...record, thumbnailBlob: generatedThumbnail, updatedAt: new Date().toISOString() };
+        await putExamAttachmentRecord(record).catch(console.warn);
+      }
+    }
     return {
       ...ref,
       name: ref.name || record.name || 'arquivo',
@@ -470,22 +552,7 @@ async function hydrateLocalFileRef(ref, context = {}) {
       thumbnailDataUrl: ref.thumbnail || ''
     });
   }
-  if (ref.dataUrl && String(ref.dataUrl).startsWith('blob:')) {
-    if (ref.storage === 'indexeddb' && ref.id) {
-      const record = await getExamAttachmentRecord(ref.id).catch(() => null);
-      if (record?.blob) {
-        return {
-          ...ref,
-          name: ref.name || record.name || 'arquivo',
-          type: ref.type || record.type || record.blob.type || 'application/octet-stream',
-          size: Number(ref.size || record.size || record.blob.size || 0),
-          dataUrl: createRuntimeObjectUrl(record.blob),
-          thumbnail: record.thumbnailBlob ? createRuntimeObjectUrl(record.thumbnailBlob) : ''
-        };
-      }
-    }
-    return { ...ref, dataUrl: '', thumbnail: '' };
-  }
+  if (ref.dataUrl && String(ref.dataUrl).startsWith('blob:')) return ref;
   return ref;
 }
 
@@ -565,9 +632,13 @@ async function fileToMemoryAsset(file, existingId = '', extra = {}) {
   if (!file) return null;
   let thumbnailBlob = null;
   if ((file.type || '').startsWith('video/')) {
-    const temporaryUrl = createRuntimeObjectUrl(file);
-    const thumbnailDataUrl = await createVideoThumbnail(temporaryUrl).catch(() => '');
-    if (thumbnailDataUrl) thumbnailBlob = dataUrlToBlob(thumbnailDataUrl);
+    const temporaryUrl = URL.createObjectURL(file);
+    try {
+      const thumbnailDataUrl = await createVideoThumbnail(temporaryUrl).catch(() => '');
+      if (thumbnailDataUrl) thumbnailBlob = dataUrlToBlob(thumbnailDataUrl);
+    } finally {
+      revokeObjectUrl(temporaryUrl);
+    }
   }
   return storeLocalFile(file, existingId, { kind: 'memory', ...extra, thumbnailBlob });
 }
@@ -762,20 +833,75 @@ function formatFileSize(bytes) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+async function openPersistentPhotoViewer(fileRef, title = 'Imagem') {
+  const modal = $('photoModal');
+  const img = $('memoryPhotoViewer');
+  const errorBox = $('photoViewerError');
+  showMediaLoading('Carregando imagem...');
+  setActivePhotoViewerUrl('');
+  if (img) {
+    img.classList.add('hidden');
+    img.removeAttribute('src');
+  }
+  if (errorBox) {
+    errorBox.classList.add('hidden');
+    errorBox.textContent = '';
+  }
+  try {
+    const prepared = await preparePersistentImageSource(fileRef);
+    setActivePhotoViewerUrl(prepared.objectUrl || '');
+    if (img) {
+      img.onerror = () => {
+        img.classList.add('hidden');
+        if (errorBox) {
+          errorBox.innerHTML = '<strong>Não foi possível exibir a imagem.</strong><p>O arquivo pode estar danificado ou em formato não compatível com este aparelho.</p>';
+          errorBox.classList.remove('hidden');
+        }
+      };
+      img.src = prepared.src;
+      img.alt = title || '';
+      if (img.decode) await img.decode().catch(() => {});
+      img.classList.remove('hidden');
+    }
+    hideMediaLoading();
+    modal?.classList.remove('hidden');
+  } catch (error) {
+    console.error(error);
+    hideMediaLoading();
+    if (errorBox) {
+      errorBox.innerHTML = `<strong>Não foi possível exibir a imagem.</strong><p>${escapeHtml(error.message || 'O arquivo pode estar danificado ou em formato não compatível com este aparelho.')}</p>`;
+      errorBox.classList.remove('hidden');
+    }
+    modal?.classList.remove('hidden');
+  }
+}
+
 window.viewExamAttachment = async function(examId) {
   const exam = currentChild().exams.find(item => item.id === examId);
   if (!exam?.file) return showToast('Este exame não possui anexo.');
+  if (isImage(exam.file)) {
+    await openPersistentPhotoViewer(exam.file, exam.nome || exam.file.name || 'Imagem do exame');
+    return;
+  }
+  showMediaLoading('Carregando arquivo...');
   const blob = await getExamAttachmentBlob(exam.file);
-  if (!blob) return showToast('Não foi possível recuperar o arquivo.');
-  const url = URL.createObjectURL(blob);
+  if (!blob) {
+    hideMediaLoading();
+    return showToast('Não foi possível recuperar o arquivo.');
+  }
+  const url = URL.createObjectURL(blobWithUsableType(blob, exam.file));
+  hideMediaLoading();
   const opened = window.open(url, '_blank', 'noopener');
   if (!opened) {
     const link = document.createElement('a');
     link.href = url;
     link.target = '_blank';
+    link.rel = 'noopener';
+    document.body.appendChild(link);
     link.click();
+    link.remove();
   }
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  setTimeout(() => revokeObjectUrl(url), 60000);
 };
 
 window.downloadExamAttachment = async function(examId) {
@@ -815,7 +941,7 @@ window.replaceExamAttachment = function(examId) {
   if (!exam) return;
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = '.pdf,.jpg,.jpeg,.png,.heic,.doc,.docx,image/*,application/pdf';
+  input.accept = '.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx,image/*,application/pdf';
   input.addEventListener('change', async () => {
     const file = input.files?.[0];
     if (!file) return;
@@ -910,8 +1036,16 @@ window.setAlbumFilter = function(albumId) {
   renderMemories();
 };
 
-function isImage(file) { return file && file.type && file.type.startsWith('image/'); }
-function isVideo(file) { return file && file.type && file.type.startsWith('video/'); }
+function isImage(file) {
+  if (!file) return false;
+  if (file.type && String(file.type).startsWith('image/')) return true;
+  return /\.(jpe?g|png|webp|heic|heif|gif)$/i.test(file.name || '');
+}
+function isVideo(file) {
+  if (!file) return false;
+  if (file.type && String(file.type).startsWith('video/')) return true;
+  return /\.(mp4|mov|m4v|webm|avi)$/i.test(file.name || '');
+}
 function isDocumentAsset(file) { return file && !isImage(file) && !isVideo(file); }
 function memoryAssets(memory) { return Array.isArray(memory.files) ? memory.files : (memory.file ? [memory.file] : []); }
 function firstAsset(memory) { return memoryAssets(memory)[0] || null; }
@@ -930,21 +1064,34 @@ function triggerDownload(dataUrl, filename = 'arquivo') {
   link.click();
   link.remove();
 }
+
+async function downloadPersistentFile(ref, filename = 'arquivo') {
+  const blob = await getExamAttachmentBlob(ref);
+  if (!blob) throw new Error('Arquivo não encontrado no armazenamento local.');
+  const url = URL.createObjectURL(blobWithUsableType(blob, ref || {}));
+  try {
+    triggerDownload(url, filename);
+  } finally {
+    setTimeout(() => revokeObjectUrl(url), 1800);
+  }
+}
+
 async function shareAsset(asset) {
   if (!asset) return;
   try {
-    const blob = await (await fetch(asset.dataUrl)).blob();
-    const file = new File([blob], asset.name || 'arquivo', { type: asset.type || blob.type });
+    const blob = await getExamAttachmentBlob(asset);
+    if (!blob) throw new Error('Arquivo não encontrado.');
+    const file = new File([blob], asset.name || 'arquivo', { type: asset.type || blob.type || 'application/octet-stream' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       await navigator.share({ files: [file], title: asset.name || 'Arquivo Crescer Juntos' });
     } else if (navigator.share) {
       await navigator.share({ title: asset.name || 'Arquivo Crescer Juntos', text: 'Arquivo salvo no Crescer Juntos.' });
     } else {
-      triggerDownload(asset.dataUrl, asset.name || 'arquivo');
+      await downloadPersistentFile(asset, asset.name || 'arquivo');
     }
   } catch (error) {
     console.warn(error);
-    triggerDownload(asset.dataUrl, asset.name || 'arquivo');
+    try { await downloadPersistentFile(asset, asset.name || 'arquivo'); } catch { showToast('Não foi possível compartilhar este arquivo.'); }
   }
 }
 
@@ -965,7 +1112,7 @@ function renderMemories() {
     const cover = firstAsset(m);
     let media = `<div class="memory-media" onclick="openMemoryViewer('${m.id}',0)">Sem foto</div>`;
     if (cover) {
-      if (isImage(cover)) media = `<div class="memory-media" onclick="openMemoryViewer('${m.id}',0)"><img src="${cover.dataUrl}" alt="${escapeHtml(m.title || 'Memória')}"></div>`;
+      if (isImage(cover)) { const preview = fileRefThumbnail(cover) || fileRefUrl(cover); media = `<div class="memory-media" onclick="openMemoryViewer('${m.id}',0)"><img src="${preview}" alt="${escapeHtml(m.title || 'Memória')}"></div>`; }
       else if (isVideo(cover)) {
         const videoCover = cover.thumbnail
           ? `<img class="video-thumb" src="${cover.thumbnail}" alt="Capa do vídeo ${escapeHtml(m.title || 'Memória')}">`
@@ -1021,97 +1168,60 @@ window.openMemoryViewer = async function(memoryId, index = 0) {
   form.elements.description.value = memory.description || '';
   form.elements.favorite.value = String(!!memory.favorite);
   form.elements.albumId.value = memory.albumId || '';
-  const stage = $('memoryCarouselStage');
-  setMemoryCarouselLoading(stage);
-  $('memoryAssetCounter').textContent = memoryAssets(memory).length ? `${activeMemoryAssetIndex + 1} de ${memoryAssets(memory).length}` : '0 de 0';
+  showMediaLoading('Carregando imagem...');
+  await renderMemoryViewer({ opening: true });
+  hideMediaLoading();
   $('memoryViewerModal').classList.remove('hidden');
-  await renderMemoryViewer();
 };
 
-async function renderMemoryViewer() {
+async function renderMemoryViewer(options = {}) {
+  const requestToken = ++mediaViewerRequestToken;
   const memory = currentChild().memories.find(m => m.id === activeMemoryViewerId);
   if (!memory) return;
   const assets = memoryAssets(memory);
   const asset = assets[activeMemoryAssetIndex];
   const stage = $('memoryCarouselStage');
-  const renderToken = ++memoryViewerRenderToken;
-
+  if (!options.opening) stage.innerHTML = '<div class="media-stage-loading"><span class="media-spinner" aria-hidden="true"></span><span>Carregando...</span></div>';
+  setActiveMemoryViewerUrl('');
+  try {
+    if (!asset) {
+      stage.innerHTML = '<div class="empty-stage">Sem anexos nesta memória.</div>';
+    } else if (isImage(asset)) {
+      const prepared = await preparePersistentImageSource(asset);
+      if (requestToken !== mediaViewerRequestToken) {
+        revokeObjectUrl(prepared.objectUrl);
+        return;
+      }
+      setActiveMemoryViewerUrl(prepared.objectUrl || '');
+      stage.innerHTML = `<img src="${prepared.src}" alt="${escapeHtml(asset.name || 'Foto da memória')}" draggable="false">`;
+      const displayedImage = stage.querySelector('img');
+      if (displayedImage) displayedImage.onerror = () => { stage.innerHTML = viewerErrorHtml('A imagem não pôde ser exibida neste aparelho.'); };
+    } else if (isVideo(asset)) {
+      const prepared = await preparePersistentVideoSource(asset);
+      if (requestToken !== mediaViewerRequestToken) {
+        revokeObjectUrl(prepared.objectUrl);
+        return;
+      }
+      setActiveMemoryViewerUrl(prepared.objectUrl || '');
+      const poster = fileRefThumbnail(asset);
+      stage.innerHTML = `<video src="${prepared.src}" controls playsinline preload="metadata" ${poster ? `poster="${poster}"` : ''}></video>`;
+    } else {
+      const blob = await getExamAttachmentBlob(asset);
+      if (!blob) throw new Error('Arquivo não encontrado no armazenamento local.');
+      const objectUrl = URL.createObjectURL(blobWithUsableType(blob, asset));
+      if (requestToken !== mediaViewerRequestToken) {
+        revokeObjectUrl(objectUrl);
+        return;
+      }
+      setActiveMemoryViewerUrl(objectUrl);
+      stage.innerHTML = `<div class="document-stage"><strong>${escapeHtml(getAssetIcon(asset))}</strong><p>${escapeHtml(asset.name || 'Arquivo')}</p><a class="file-pill" href="${objectUrl}" target="_blank" rel="noopener">Visualizar arquivo</a></div>`;
+    }
+  } catch (error) {
+    console.error(error);
+    if (requestToken === mediaViewerRequestToken) stage.innerHTML = viewerErrorHtml(error.message || 'Tente novamente.');
+  }
   $('memoryAssetCounter').textContent = assets.length ? `${activeMemoryAssetIndex + 1} de ${assets.length}` : '0 de 0';
   renderMemoryAttachmentList(memory);
-
-  if (!asset) {
-    setMemoryCarouselError(stage, 'Sem anexos nesta memória.');
-    return;
-  }
-
-  setMemoryCarouselLoading(stage);
-
-  if (isImage(asset)) {
-    const url = await resolveMemoryAssetDisplayUrl(asset);
-    if (renderToken !== memoryViewerRenderToken) return;
-    if (!url) {
-      setMemoryCarouselError(stage, 'Não foi possível recuperar a imagem salva. Tente reabrir a memória.');
-      return;
-    }
-    const img = document.createElement('img');
-    img.alt = asset.name || 'Foto da memória';
-    img.decoding = 'async';
-    img.src = url;
-    try {
-      await waitForMediaLoad(img);
-      if (renderToken !== memoryViewerRenderToken) return;
-      stage.replaceChildren(img);
-    } catch {
-      if (renderToken !== memoryViewerRenderToken) return;
-      setMemoryCarouselError(stage, 'Não foi possível carregar a imagem.');
-    }
-    return;
-  }
-
-  if (isVideo(asset)) {
-    const { url, poster } = await resolveMemoryAssetMediaUrl(asset);
-    if (renderToken !== memoryViewerRenderToken) return;
-    if (!url) {
-      setMemoryCarouselError(stage, 'Não foi possível recuperar o vídeo salvo.');
-      return;
-    }
-    const video = document.createElement('video');
-    video.controls = true;
-    video.playsInline = true;
-    video.setAttribute('playsinline', '');
-    if (poster) video.poster = poster;
-    video.src = url;
-    try {
-      await waitForMediaLoad(video);
-      if (renderToken !== memoryViewerRenderToken) return;
-      stage.replaceChildren(video);
-    } catch {
-      if (renderToken !== memoryViewerRenderToken) return;
-      setMemoryCarouselError(stage, 'Não foi possível carregar o vídeo.');
-    }
-    return;
-  }
-
-  const docUrl = await resolveMemoryAssetDisplayUrl(asset);
-  if (renderToken !== memoryViewerRenderToken) return;
-  stage.replaceChildren();
-  const wrapper = document.createElement('div');
-  wrapper.className = 'document-stage';
-  wrapper.innerHTML = `<strong>${escapeHtml(getAssetIcon(asset))}</strong><p>${escapeHtml(asset.name || 'Arquivo')}</p>`;
-  if (docUrl) {
-    const link = document.createElement('a');
-    link.className = 'file-pill';
-    link.href = docUrl;
-    link.target = '_blank';
-    link.rel = 'noopener';
-    link.textContent = 'Visualizar arquivo';
-    wrapper.appendChild(link);
-  } else {
-    const msg = document.createElement('p');
-    msg.textContent = 'Arquivo indisponível no momento.';
-    wrapper.appendChild(msg);
-  }
-  stage.appendChild(wrapper);
 }
 
 function renderMemoryAttachmentList(memory) {
@@ -1121,7 +1231,7 @@ function renderMemoryAttachmentList(memory) {
     ${assets.map((asset, index) => `
       <div class="attachment-item">
         <button type="button" class="attachment-thumb" onclick="openMemoryViewer('${memory.id}',${index})">
-          ${isImage(asset) ? `<img src="${asset.dataUrl}" alt="${escapeHtml(asset.name)}">` : isVideo(asset) ? `<img src="${asset.thumbnail || ''}" alt="${escapeHtml(asset.name)}"><span>▶</span>` : `<strong>${escapeHtml(getAssetIcon(asset))}</strong>`}
+          ${isImage(asset) ? `<img src="${fileRefThumbnail(asset) || fileRefUrl(asset)}" alt="${escapeHtml(asset.name)}">` : isVideo(asset) ? `<img src="${asset.thumbnail || ''}" alt="${escapeHtml(asset.name)}"><span>▶</span>` : `<strong>${escapeHtml(getAssetIcon(asset))}</strong>`}
         </button>
         <div>
           <strong>${escapeHtml(asset.name || 'Anexo')}</strong>
@@ -1138,21 +1248,23 @@ function renderMemoryAttachmentList(memory) {
   ` : '<p class="muted">Nenhum anexo nesta memória.</p>';
 }
 
-function moveMemoryAsset(delta) {
+async function moveMemoryAsset(delta) {
   const memory = currentChild().memories.find(m => m.id === activeMemoryViewerId);
   if (!memory) return;
   const total = memoryAssets(memory).length;
   if (!total) return;
   activeMemoryAssetIndex = (activeMemoryAssetIndex + delta + total) % total;
-  renderMemoryViewer();
+  await renderMemoryViewer();
 }
 
 function closeMemoryViewer() {
-  memoryViewerRenderToken += 1;
+  mediaViewerRequestToken += 1;
+  setActiveMemoryViewerUrl('');
   $('memoryViewerModal').classList.add('hidden');
-  $('memoryCarouselStage').replaceChildren();
+  $('memoryCarouselStage').innerHTML = '';
   activeMemoryViewerId = '';
   activeMemoryAssetIndex = 0;
+  hideMediaLoading();
 }
 
 async function saveMemoryEdits(event) {
@@ -1177,13 +1289,19 @@ async function saveMemoryEdits(event) {
   form.elements.newFiles.value = '';
   saveState();
   renderAll();
-  renderMemoryViewer();
+  await renderMemoryViewer();
   showToast('Memória atualizada.');
 }
 
-window.downloadMemoryAsset = function(memoryId, assetId) {
+window.downloadMemoryAsset = async function(memoryId, assetId) {
   const asset = memoryAssets(currentChild().memories.find(m => m.id === memoryId) || {}).find(a => a.id === assetId);
-  if (asset) triggerDownload(asset.dataUrl, asset.name || 'arquivo');
+  if (!asset) return;
+  try {
+    await downloadPersistentFile(asset, asset.name || 'arquivo');
+  } catch (error) {
+    console.error(error);
+    showToast('Não foi possível baixar este arquivo.');
+  }
 };
 
 window.shareMemoryAsset = async function(memoryId, assetId) {
@@ -1203,7 +1321,7 @@ window.replaceMemoryAsset = async function(event, memoryId, assetId) {
   memory.files = assets;
   saveState();
   renderAll();
-  renderMemoryViewer();
+  await renderMemoryViewer();
   showToast('Anexo substituído.');
 };
 
@@ -1215,16 +1333,23 @@ window.deleteMemoryAsset = async function(memoryId, assetId) {
   activeMemoryAssetIndex = Math.max(0, Math.min(activeMemoryAssetIndex, memory.files.length - 1));
   saveState();
   renderAll();
-  renderMemoryViewer();
+  await renderMemoryViewer();
   showToast('Anexo excluído.');
 };
 
-function downloadAllCurrentMemoryAssets() {
+async function downloadAllCurrentMemoryAssets() {
   const memory = currentChild().memories.find(m => m.id === activeMemoryViewerId);
   if (!memory) return;
-  memoryAssets(memory).forEach((asset, index) => {
-    setTimeout(() => triggerDownload(asset.dataUrl, asset.name || `anexo-${index + 1}`), index * 300);
-  });
+  const assets = memoryAssets(memory);
+  for (let index = 0; index < assets.length; index += 1) {
+    const asset = assets[index];
+    try {
+      await downloadPersistentFile(asset, asset.name || `anexo-${index + 1}`);
+      await new Promise(resolve => setTimeout(resolve, 300));
+    } catch (error) {
+      console.warn(error);
+    }
+  }
   showToast('Downloads iniciados.');
 }
 
@@ -1289,7 +1414,7 @@ function renderFavorites() {
   favWrap.className = 'memory-grid list-view';
   favWrap.innerHTML = favorites.length ? favorites.map(m => {
     const asset = firstAsset(m);
-    const media = asset ? (isImage(asset) ? `<div class="memory-media"><img src="${asset.dataUrl}" alt="${escapeHtml(m.title || 'Memória')}"></div>` : isVideo(asset) ? `<div class="memory-media"><img src="${asset.thumbnail || ''}" alt="${escapeHtml(m.title || 'Vídeo')}"><span class="play-badge">▶</span></div>` : `<div class="memory-media">${escapeHtml(getAssetIcon(asset))}</div>`) : `<div class="memory-media">Sem mídia</div>`;
+    const media = asset ? (isImage(asset) ? `<div class="memory-media"><img src="${fileRefThumbnail(asset) || fileRefUrl(asset)}" alt="${escapeHtml(m.title || 'Memória')}"></div>` : isVideo(asset) ? `<div class="memory-media"><img src="${asset.thumbnail || ''}" alt="${escapeHtml(m.title || 'Vídeo')}"><span class="play-badge">▶</span></div>` : `<div class="memory-media">${escapeHtml(getAssetIcon(asset))}</div>`) : `<div class="memory-media">Sem mídia</div>`;
     return `<article class="memory-card"><div class="memory-media-wrap">${media}<span class="favorite-badge">♥</span></div><div class="memory-content"><span class="date">${formatDate(m.date)}</span><h4>${escapeHtml(m.title || 'Memória')}</h4>${m.description ? `<p>${escapeHtml(m.description)}</p>` : ''}</div></article>`;
   }).join('') : '<p class="muted">Nenhuma memória favorita cadastrada.</p>';
   const totalFiles = child.memories.reduce((sum, m) => sum + memoryAssets(m).length, 0);
@@ -1961,6 +2086,45 @@ function addFormListeners() {
   $('memoryViewerModal')?.addEventListener('click', event => {
     if (event.target.id === 'memoryViewerModal') closeMemoryViewer();
   });
+
+  const carouselStage = $('memoryCarouselStage');
+  carouselStage?.addEventListener('touchstart', event => {
+    if (event.target.closest('video, a, button')) {
+      carouselTouchStartX = 0;
+      carouselTouchStartY = 0;
+      return;
+    }
+    const touch = event.changedTouches?.[0];
+    if (!touch) return;
+    carouselTouchStartX = touch.clientX;
+    carouselTouchStartY = touch.clientY;
+  }, { passive: true });
+  carouselStage?.addEventListener('touchend', event => {
+    if (!window.matchMedia('(max-width: 768px)').matches || !carouselTouchStartX) return;
+    if (event.target.closest('video, a, button')) return;
+    const touch = event.changedTouches?.[0];
+    if (!touch) return;
+    const deltaX = touch.clientX - carouselTouchStartX;
+    const deltaY = touch.clientY - carouselTouchStartY;
+    if (Math.abs(deltaX) < 45 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
+    moveMemoryAsset(deltaX < 0 ? 1 : -1);
+  }, { passive: true });
+
+  document.addEventListener('keydown', event => {
+    const modalOpen = !$('memoryViewerModal')?.classList.contains('hidden');
+    if (!modalOpen) return;
+    const tag = document.activeElement?.tagName?.toLowerCase();
+    if (['input', 'textarea', 'select'].includes(tag)) return;
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      moveMemoryAsset(-1);
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      moveMemoryAsset(1);
+    } else if (event.key === 'Escape') {
+      closeMemoryViewer();
+    }
+  });
 }
 
 function closeVideoModal() {
@@ -1971,8 +2135,20 @@ function closeVideoModal() {
 }
 
 function closePhotoModal() {
-  $('memoryPhotoViewer').src = '';
+  setActivePhotoViewerUrl('');
+  const image = $('memoryPhotoViewer');
+  if (image) {
+    image.onerror = null;
+    image.removeAttribute('src');
+    image.classList.add('hidden');
+  }
+  const errorBox = $('photoViewerError');
+  if (errorBox) {
+    errorBox.textContent = '';
+    errorBox.classList.add('hidden');
+  }
   $('photoModal').classList.add('hidden');
+  hideMediaLoading();
 }
 
 window.downloadIcs = function(eventId) {
