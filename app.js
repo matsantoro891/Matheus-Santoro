@@ -968,6 +968,9 @@ function renderMemories() {
 
 let activeMemoryViewerId = '';
 let activeMemoryAssetIndex = 0;
+let memoryViewerPageScrollY = 0;
+let memoryViewerScrollLocked = false;
+let memoryCarouselScrollTimer = null;
 
 function fillMemoryEditAlbumSelect(selectedAlbumId = '') {
   const child = currentChild();
@@ -990,8 +993,10 @@ window.openMemoryViewer = function(memoryId, index = 0) {
   form.elements.description.value = memory.description || '';
   form.elements.favorite.value = String(!!memory.favorite);
   form.elements.albumId.value = memory.albumId || '';
-  renderMemoryViewer();
+  lockMemoryViewerBackground();
   $('memoryViewerModal').classList.remove('hidden');
+  $('memoryViewerModal').scrollTop = 0;
+  renderMemoryViewer();
 };
 
 function renderMemoryViewer() {
@@ -1001,19 +1006,107 @@ function renderMemoryViewer() {
   const asset = assets[activeMemoryAssetIndex];
   const stage = $('memoryCarouselStage');
   if (!asset) {
-    stage.className = 'memory-carousel-stage';
+    stage.className = 'memory-viewer-media';
     stage.innerHTML = '<div class="empty-stage">Sem anexos nesta memória.</div>';
   } else if (isImage(asset)) {
-    openPersistentPhotoViewer(stage, asset);
+    renderPersistentPhotoCarousel(stage, memory, assets);
   } else if (isVideo(asset)) {
-    stage.className = 'memory-carousel-stage';
+    stage.className = 'memory-viewer-media';
     stage.innerHTML = `<video src="${asset.dataUrl}" controls playsinline poster="${asset.thumbnail || ''}"></video>`;
   } else {
-    stage.className = 'memory-carousel-stage';
+    stage.className = 'memory-viewer-media';
     stage.innerHTML = `<div class="document-stage"><strong>${escapeHtml(getAssetIcon(asset))}</strong><p>${escapeHtml(asset.name || 'Arquivo')}</p><a class="file-pill" href="${asset.dataUrl}" target="_blank" rel="noopener">Visualizar arquivo</a></div>`;
   }
-  $('memoryAssetCounter').textContent = assets.length ? `${activeMemoryAssetIndex + 1} de ${assets.length}` : '0 de 0';
+  updateMemoryAssetCounter(memory, assets);
+  renderMemoryViewerDetails(memory, assets);
+  updateMemoryAssetCounter(memory, assets);
   renderMemoryAttachmentList(memory);
+}
+
+function memoryImageEntries(assets) {
+  return assets.map((asset, index) => ({ asset, index })).filter(entry => isImage(entry.asset));
+}
+
+function renderPersistentPhotoCarousel(stage, memory, assets) {
+  const imageEntries = memoryImageEntries(assets);
+  const selectedImageIndex = Math.max(0, imageEntries.findIndex(entry => entry.index === activeMemoryAssetIndex));
+  memoryViewerImageLoadToken += 1;
+  const loadToken = memoryViewerImageLoadToken;
+  stage.className = 'memory-viewer-media';
+  stage.innerHTML = '<div id="memoryPhotoCarousel" class="memory-photo-carousel" aria-label="Fotos da memória"></div>';
+  const carousel = $('memoryPhotoCarousel');
+  carousel.addEventListener('scroll', () => {
+    clearTimeout(memoryCarouselScrollTimer);
+    memoryCarouselScrollTimer = setTimeout(syncMemoryCarouselCounter, 80);
+  }, { passive: true });
+  imageEntries.forEach(({ asset, index }) => {
+    const slide = document.createElement('div');
+    slide.className = 'memory-photo-slide';
+    slide.dataset.assetIndex = String(index);
+    carousel.appendChild(slide);
+    preparePersistentImageElement(slide, asset, loadToken);
+  });
+  requestAnimationFrame(() => {
+    scrollMemoryCarouselToImageIndex(selectedImageIndex, false);
+    syncMemoryCarouselCounter();
+  });
+}
+
+function scrollMemoryCarouselToImageIndex(imageIndex, smooth = true) {
+  const carousel = $('memoryPhotoCarousel');
+  if (!carousel) return;
+  const boundedIndex = Math.max(0, Math.min(imageIndex, carousel.children.length - 1));
+  const slide = carousel.children[boundedIndex];
+  if (!slide) return;
+  activeMemoryAssetIndex = Number(slide.dataset.assetIndex || activeMemoryAssetIndex);
+  updateMemoryAssetCounter();
+  carousel.scrollTo({ left: boundedIndex * carousel.clientWidth, behavior: smooth ? 'smooth' : 'auto' });
+}
+
+function syncMemoryCarouselCounter() {
+  const carousel = $('memoryPhotoCarousel');
+  if (!carousel || !carousel.children.length) return;
+  const imageIndex = Math.max(0, Math.min(carousel.children.length - 1, Math.round(carousel.scrollLeft / Math.max(1, carousel.clientWidth))));
+  const slide = carousel.children[imageIndex];
+  activeMemoryAssetIndex = Number(slide.dataset.assetIndex || activeMemoryAssetIndex);
+  updateMemoryAssetCounter();
+}
+
+function updateMemoryAssetCounter(memory = currentChild().memories.find(m => m.id === activeMemoryViewerId), assets = memory ? memoryAssets(memory) : []) {
+  const counter = $('memoryAssetCounter');
+  const detailsCounter = document.querySelector('#memoryViewerDetails .memory-photo-counter');
+  if (!counter) return;
+  let text = '0 de 0';
+  if (!assets.length) {
+    counter.textContent = text;
+    if (detailsCounter) detailsCounter.textContent = text;
+    return;
+  }
+  if (isImage(assets[activeMemoryAssetIndex])) {
+    const imageEntries = memoryImageEntries(assets);
+    const imageIndex = imageEntries.findIndex(entry => entry.index === activeMemoryAssetIndex);
+    text = `${Math.max(0, imageIndex) + 1} de ${imageEntries.length}`;
+    counter.textContent = text;
+    if (detailsCounter) detailsCounter.textContent = text;
+    return;
+  }
+  text = `${activeMemoryAssetIndex + 1} de ${assets.length}`;
+  counter.textContent = text;
+  if (detailsCounter) detailsCounter.textContent = text;
+}
+
+function renderMemoryViewerDetails(memory, assets) {
+  const album = currentChild().albums.find(a => a.id === memory.albumId);
+  const details = $('memoryViewerDetails');
+  if (!details) return;
+  details.innerHTML = `
+    <div class="memory-photo-counter">0 de 0</div>
+    <div class="memory-date">${formatDate(memory.date)}</div>
+    <h2>${escapeHtml(memory.title || 'Memória sem título')}</h2>
+    ${memory.description ? `<div class="memory-description">${escapeHtml(memory.description)}</div>` : '<div class="memory-description muted">Sem descrição.</div>'}
+    ${album ? `<div class="memory-album">Álbum: ${escapeHtml(album.name)}</div>` : ''}
+    <div class="memory-viewer-meta">${assets.length ? `${assets.length} anexo(s)` : 'Sem anexos'}${memory.favorite ? ' • Favorita' : ''}</div>
+  `;
 }
 
 function renderMemoryAttachmentList(memory) {
@@ -1043,7 +1136,14 @@ function renderMemoryAttachmentList(memory) {
 function moveMemoryAsset(delta) {
   const memory = currentChild().memories.find(m => m.id === activeMemoryViewerId);
   if (!memory) return;
-  const total = memoryAssets(memory).length;
+  const assets = memoryAssets(memory);
+  const carousel = $('memoryPhotoCarousel');
+  if (carousel && carousel.children.length) {
+    const currentImageIndex = Math.max(0, Math.min(carousel.children.length - 1, Math.round(carousel.scrollLeft / Math.max(1, carousel.clientWidth))));
+    scrollMemoryCarouselToImageIndex((currentImageIndex + delta + carousel.children.length) % carousel.children.length);
+    return;
+  }
+  const total = assets.length;
   if (!total) return;
   activeMemoryAssetIndex = (activeMemoryAssetIndex + delta + total) % total;
   renderMemoryViewer();
@@ -1054,9 +1154,35 @@ function closeMemoryViewer() {
   $('memoryViewerModal').classList.add('hidden');
   const stage = $('memoryCarouselStage');
   stage.innerHTML = '';
-  stage.className = 'memory-carousel-stage';
+  stage.className = 'memory-viewer-media';
+  $('memoryViewerDetails').innerHTML = '';
+  unlockMemoryViewerBackground();
   activeMemoryViewerId = '';
   activeMemoryAssetIndex = 0;
+}
+
+function lockMemoryViewerBackground() {
+  if (memoryViewerScrollLocked) return;
+  memoryViewerPageScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+  memoryViewerScrollLocked = true;
+  document.body.style.position = 'fixed';
+  document.body.style.top = `-${memoryViewerPageScrollY}px`;
+  document.body.style.left = '0';
+  document.body.style.right = '0';
+  document.body.style.width = '100%';
+  document.body.classList.add('memory-viewer-open');
+}
+
+function unlockMemoryViewerBackground() {
+  if (!memoryViewerScrollLocked) return;
+  memoryViewerScrollLocked = false;
+  document.body.style.position = '';
+  document.body.style.top = '';
+  document.body.style.left = '';
+  document.body.style.right = '';
+  document.body.style.width = '';
+  document.body.classList.remove('memory-viewer-open');
+  window.scrollTo(0, memoryViewerPageScrollY);
 }
 
 async function saveMemoryEdits(event) {
@@ -1860,15 +1986,6 @@ function addFormListeners() {
   $('closeMemoryViewer')?.addEventListener('click', closeMemoryViewer);
   $('prevMemoryAsset')?.addEventListener('click', () => moveMemoryAsset(-1));
   $('nextMemoryAsset')?.addEventListener('click', () => moveMemoryAsset(1));
-  let memoryCarouselTouchStartX = 0;
-  $('memoryCarouselStage')?.addEventListener('touchstart', event => {
-    memoryCarouselTouchStartX = event.changedTouches[0]?.screenX || 0;
-  }, { passive: true });
-  $('memoryCarouselStage')?.addEventListener('touchend', event => {
-    const endX = event.changedTouches[0]?.screenX || 0;
-    const delta = endX - memoryCarouselTouchStartX;
-    if (Math.abs(delta) > 48) moveMemoryAsset(delta > 0 ? -1 : 1);
-  }, { passive: true });
   $('downloadAllMemoryAssets')?.addEventListener('click', downloadAllCurrentMemoryAssets);
   $('memoryEditForm')?.addEventListener('submit', saveMemoryEdits);
   $('memoryViewerModal')?.addEventListener('click', event => {
