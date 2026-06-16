@@ -1,9 +1,22 @@
-const CACHE_NAME = 'crescer-juntos-v15-cache';
-const ASSETS = ['./', './index.html', './styles.css', './app.js', './growth-reference.js', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './icons/logo-main.png'];
+const CACHE_NAME = 'crescer-juntos-v16-ios-image-cache';
+const CORE_ASSETS = [
+  './',
+  './index.html',
+  './styles.css?v=16',
+  './app.js?v=16',
+  './growth-reference.js?v=16',
+  './manifest.json?v=16',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/apple-touch-icon.png',
+  './icons/logo-main.png'
+];
 
 self.addEventListener('install', event => {
   self.skipWaiting();
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)));
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => cache.addAll(CORE_ASSETS))
+  );
 });
 
 self.addEventListener('activate', event => {
@@ -13,6 +26,40 @@ self.addEventListener('activate', event => {
   ]));
 });
 
+async function networkFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  try {
+    const response = await fetch(request, { cache: 'no-store' });
+    if (response && response.ok) cache.put(request, response.clone());
+    return response;
+  } catch (error) {
+    const cached = await cache.match(request, { ignoreSearch: false });
+    if (cached) return cached;
+    if (request.mode === 'navigate') return cache.match('./index.html');
+    throw error;
+  }
+}
+
+async function cacheFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  const response = await fetch(request);
+  if (response && response.ok) cache.put(request, response.clone());
+  return response;
+}
+
 self.addEventListener('fetch', event => {
-  event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request)));
+  if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  const sameOrigin = url.origin === self.location.origin;
+  if (event.request.mode === 'navigate') {
+    event.respondWith(networkFirst(event.request));
+    return;
+  }
+  if (sameOrigin && /\.(?:js|css|html|json)$/i.test(url.pathname)) {
+    event.respondWith(networkFirst(event.request));
+    return;
+  }
+  event.respondWith(cacheFirst(event.request));
 });

@@ -21,6 +21,7 @@ let activePhotoViewerObjectUrl = '';
 let mediaViewerRequestToken = 0;
 let carouselTouchStartX = 0;
 let carouselTouchStartY = 0;
+const IS_IOS_WEBKIT = /iP(ad|hone|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 function uid() {
   return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
@@ -381,19 +382,126 @@ async function createImageThumbnailBlob(blob, maxSize = 480) {
   }
 }
 
-async function preparePersistentImageSource(ref) {
+function logImageViewerDebug(stage, src, blob, error = null) {
+  const safeSrc = String(src || '').startsWith('data:')
+    ? `${String(src).slice(0, 96)}…`
+    : String(src || '');
+  const payload = {
+    stage,
+    src: safeSrc,
+    sourceKind: String(src || '').startsWith('data:') ? 'dataURL' : (String(src || '').startsWith('blob:') ? 'objectURL' : 'unknown'),
+    blobSize: Number(blob?.size || 0),
+    blobType: blob?.type || '',
+    iOSWebKit: IS_IOS_WEBKIT,
+    error: error ? (error.message || String(error)) : null
+  };
+  if (error) console.error('[Crescer Juntos][Visualizador de imagem]', payload);
+  else console.info('[Crescer Juntos][Visualizador de imagem]', payload);
+}
+
+function loadImageNode(src, alt = '', timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('Tempo excedido ao carregar a imagem.'));
+    }, timeoutMs);
+    const cleanup = () => {
+      clearTimeout(timer);
+      img.onload = null;
+      img.onerror = null;
+    };
+    img.alt = alt;
+    img.draggable = false;
+    img.decoding = 'async';
+    img.style.display = 'block';
+    img.style.maxWidth = '100%';
+    img.style.width = 'auto';
+    img.style.height = 'auto';
+    img.style.maxHeight = '78vh';
+    img.style.objectFit = 'contain';
+    img.style.opacity = '1';
+    img.style.visibility = 'visible';
+    img.onload = async () => {
+      if (settled) return;
+      try {
+        if (img.decode) await img.decode().catch(() => {});
+      } finally {
+        settled = true;
+        cleanup();
+        if ((img.naturalWidth || 0) < 1 || (img.naturalHeight || 0) < 1) {
+          reject(new Error('A imagem foi carregada sem dimensões válidas.'));
+        } else {
+          resolve(img);
+        }
+      }
+    };
+    img.onerror = event => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      const error = new Error('O Safari não conseguiu decodificar a imagem por esta fonte.');
+      error.event = event;
+      reject(error);
+    };
+    img.src = src;
+  });
+}
+
+async function preparePersistentImageElement(ref, alt = 'Imagem') {
   const blob = blobWithUsableType(await getExamAttachmentBlob(ref), ref || {});
-  if (!blob) throw new Error('Arquivo de imagem não encontrado no armazenamento local.');
-  let objectUrl = URL.createObjectURL(blob);
+  if (!blob || !blob.size) throw new Error('Arquivo de imagem não encontrado no armazenamento local.');
+
+  // No iPhone/iPad, Data URL é a fonte primária para evitar o modal branco
+  // observado no WebKit com Blob URLs recuperadas do IndexedDB.
+  if (IS_IOS_WEBKIT) {
+    try {
+      const dataUrl = await blobToDataUrl(blob);
+      const image = await loadImageNode(dataUrl, alt, 30000);
+      logImageViewerDebug('iOS: base64 carregado', dataUrl, blob);
+      return { image, src: dataUrl, objectUrl: '', blob, sourceKind: 'dataURL' };
+    } catch (iosDataError) {
+      logImageViewerDebug('iOS: falha no base64; tentando objectURL', '', blob, iosDataError);
+      let iosObjectUrl = '';
+      try {
+        iosObjectUrl = URL.createObjectURL(blob);
+        const image = await loadImageNode(iosObjectUrl, alt);
+        logImageViewerDebug('iOS: objectURL alternativo carregado', iosObjectUrl, blob);
+        return { image, src: iosObjectUrl, objectUrl: iosObjectUrl, blob, sourceKind: 'objectURL' };
+      } catch (iosObjectError) {
+        logImageViewerDebug('iOS: falha também no objectURL', iosObjectUrl, blob, iosObjectError);
+        revokeObjectUrl(iosObjectUrl);
+        throw new Error(`Não foi possível abrir a imagem neste iPhone/iPad. ${iosObjectError.message || iosDataError.message || ''}`.trim());
+      }
+    }
+  }
+
+  let objectUrl = '';
+  let firstError = null;
   try {
-    await waitForImageLoad(objectUrl);
-    return { src: objectUrl, objectUrl };
-  } catch (firstError) {
+    objectUrl = URL.createObjectURL(blob);
+    const image = await loadImageNode(objectUrl, alt);
+    logImageViewerDebug('objectURL carregado', objectUrl, blob);
+    return { image, src: objectUrl, objectUrl, blob, sourceKind: 'objectURL' };
+  } catch (error) {
+    firstError = error;
+    logImageViewerDebug('falha no objectURL; iniciando fallback', objectUrl, blob, error);
     revokeObjectUrl(objectUrl);
     objectUrl = '';
+  }
+
+  try {
     const dataUrl = await blobToDataUrl(blob);
-    await waitForImageLoad(dataUrl);
-    return { src: dataUrl, objectUrl: '' };
+    const image = await loadImageNode(dataUrl, alt, 30000);
+    logImageViewerDebug('fallback base64 carregado', dataUrl, blob);
+    return { image, src: dataUrl, objectUrl: '', blob, sourceKind: 'dataURL' };
+  } catch (fallbackError) {
+    logImageViewerDebug('falha no fallback base64', '', blob, fallbackError);
+    const combined = new Error(`Não foi possível abrir a imagem neste aparelho. ${fallbackError.message || firstError?.message || ''}`.trim());
+    combined.cause = fallbackError;
+    throw combined;
   }
 }
 
@@ -721,7 +829,9 @@ function downloadText(filename, text, mime = 'text/plain') {
 
 function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./service-worker.js').catch(console.warn);
+    navigator.serviceWorker.register('./service-worker.js?v=16', { updateViaCache: 'none' })
+      .then(registration => registration.update().catch(() => {}))
+      .catch(console.warn);
   }
 }
 
@@ -835,39 +945,44 @@ function formatFileSize(bytes) {
 
 async function openPersistentPhotoViewer(fileRef, title = 'Imagem') {
   const modal = $('photoModal');
-  const img = $('memoryPhotoViewer');
   const errorBox = $('photoViewerError');
   showMediaLoading('Carregando imagem...');
-  setActivePhotoViewerUrl('');
-  if (img) {
-    img.classList.add('hidden');
-    img.removeAttribute('src');
-  }
+
   if (errorBox) {
     errorBox.classList.add('hidden');
     errorBox.textContent = '';
   }
+
   try {
-    const prepared = await preparePersistentImageSource(fileRef);
+    const prepared = await preparePersistentImageElement(fileRef, title || 'Imagem');
+    const previousImage = $('memoryPhotoViewer');
+    const image = prepared.image;
+    image.id = 'memoryPhotoViewer';
+    image.className = '';
+    image.alt = title || '';
+    image.setAttribute('aria-label', title || 'Imagem');
+
+    if (previousImage) previousImage.replaceWith(image);
+    else modal?.querySelector('.photo-modal-card')?.appendChild(image);
+
+    // A URL anterior só é revogada depois que a nova imagem terminou de carregar.
     setActivePhotoViewerUrl(prepared.objectUrl || '');
-    if (img) {
-      img.onerror = () => {
-        img.classList.add('hidden');
-        if (errorBox) {
-          errorBox.innerHTML = '<strong>Não foi possível exibir a imagem.</strong><p>O arquivo pode estar danificado ou em formato não compatível com este aparelho.</p>';
-          errorBox.classList.remove('hidden');
-        }
-      };
-      img.src = prepared.src;
-      img.alt = title || '';
-      if (img.decode) await img.decode().catch(() => {});
-      img.classList.remove('hidden');
-    }
     hideMediaLoading();
     modal?.classList.remove('hidden');
+    requestAnimationFrame(() => {
+      image.style.display = 'block';
+      image.style.opacity = '1';
+      image.style.visibility = 'visible';
+      logImageViewerDebug('modal exibido', image.currentSrc || image.src, prepared.blob);
+    });
   } catch (error) {
-    console.error(error);
+    console.error('[Crescer Juntos] Falha ao abrir imagem do exame', error);
     hideMediaLoading();
+    const image = $('memoryPhotoViewer');
+    if (image) {
+      image.removeAttribute('src');
+      image.style.display = 'none';
+    }
     if (errorBox) {
       errorBox.innerHTML = `<strong>Não foi possível exibir a imagem.</strong><p>${escapeHtml(error.message || 'O arquivo pode estar danificado ou em formato não compatível com este aparelho.')}</p>`;
       errorBox.classList.remove('hidden');
@@ -1182,20 +1297,32 @@ async function renderMemoryViewer(options = {}) {
   const asset = assets[activeMemoryAssetIndex];
   const stage = $('memoryCarouselStage');
   if (!options.opening) stage.innerHTML = '<div class="media-stage-loading"><span class="media-spinner" aria-hidden="true"></span><span>Carregando...</span></div>';
-  setActiveMemoryViewerUrl('');
+
   try {
     if (!asset) {
+      setActiveMemoryViewerUrl('');
       stage.innerHTML = '<div class="empty-stage">Sem anexos nesta memória.</div>';
     } else if (isImage(asset)) {
-      const prepared = await preparePersistentImageSource(asset);
+      const prepared = await preparePersistentImageElement(asset, asset.name || 'Foto da memória');
       if (requestToken !== mediaViewerRequestToken) {
         revokeObjectUrl(prepared.objectUrl);
         return;
       }
+
+      const image = prepared.image;
+      image.className = 'memory-viewer-image';
+      image.alt = asset.name || 'Foto da memória';
+      image.style.maxHeight = '62vh';
+      stage.replaceChildren(image);
+
+      // Revoga a URL anterior somente após a nova imagem estar totalmente pronta.
       setActiveMemoryViewerUrl(prepared.objectUrl || '');
-      stage.innerHTML = `<img src="${prepared.src}" alt="${escapeHtml(asset.name || 'Foto da memória')}" draggable="false">`;
-      const displayedImage = stage.querySelector('img');
-      if (displayedImage) displayedImage.onerror = () => { stage.innerHTML = viewerErrorHtml('A imagem não pôde ser exibida neste aparelho.'); };
+      requestAnimationFrame(() => {
+        image.style.display = 'block';
+        image.style.opacity = '1';
+        image.style.visibility = 'visible';
+        logImageViewerDebug('carrossel exibido', image.currentSrc || image.src, prepared.blob);
+      });
     } else if (isVideo(asset)) {
       const prepared = await preparePersistentVideoSource(asset);
       if (requestToken !== mediaViewerRequestToken) {
@@ -1217,8 +1344,11 @@ async function renderMemoryViewer(options = {}) {
       stage.innerHTML = `<div class="document-stage"><strong>${escapeHtml(getAssetIcon(asset))}</strong><p>${escapeHtml(asset.name || 'Arquivo')}</p><a class="file-pill" href="${objectUrl}" target="_blank" rel="noopener">Visualizar arquivo</a></div>`;
     }
   } catch (error) {
-    console.error(error);
-    if (requestToken === mediaViewerRequestToken) stage.innerHTML = viewerErrorHtml(error.message || 'Tente novamente.');
+    console.error('[Crescer Juntos] Falha ao exibir anexo da memória', error);
+    if (requestToken === mediaViewerRequestToken) {
+      setActiveMemoryViewerUrl('');
+      stage.innerHTML = viewerErrorHtml(error.message || 'Tente novamente.');
+    }
   }
   $('memoryAssetCounter').textContent = assets.length ? `${activeMemoryAssetIndex + 1} de ${assets.length}` : '0 de 0';
   renderMemoryAttachmentList(memory);
@@ -2138,9 +2268,10 @@ function closePhotoModal() {
   setActivePhotoViewerUrl('');
   const image = $('memoryPhotoViewer');
   if (image) {
+    image.onload = null;
     image.onerror = null;
     image.removeAttribute('src');
-    image.classList.add('hidden');
+    image.style.display = 'none';
   }
   const errorBox = $('photoViewerError');
   if (errorBox) {

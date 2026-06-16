@@ -1087,3 +1087,39 @@ body[data-theme="adolescente-menina"] {
     font-size: 0.8rem;
   }
 }
+
+
+/* Correção v16: visualização persistente de imagens no iOS/Safari/PWA. */
+#memoryCarouselStage > img.memory-viewer-image,
+#memoryPhotoViewer {
+  display: block !important;
+  width: auto !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: 78vh !important;
+  max-height: 78dvh !important;
+  object-fit: contain !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  position: relative !important;
+  z-index: 2 !important;
+  margin: 0 auto !important;
+  transform: none !important;
+  -webkit-transform: none !important;
+}
+#memoryCarouselStage > img.memory-viewer-image {
+  max-height: 62vh !important;
+  max-height: 62dvh !important;
+}
+.photo-modal-card,
+.memory-carousel-stage {
+  isolation: isolate;
+}
+@supports (-webkit-touch-callout: none) {
+  #memoryCarouselStage > img.memory-viewer-image,
+  #memoryPhotoViewer {
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    image-rendering: auto;
+  }
+}

@@ -56,3 +56,7 @@ Os anexos de Saúde > Exames agora são armazenados permanentemente em IndexedDB
 - Miniaturas otimizadas são salvas no IndexedDB e usadas na grade.
 - Backup e restauração continuam incluindo os arquivos originais e suas miniaturas.
 - Texto discreto “— cReSer Juntos —” adicionado ao final da Home.
+
+
+## Versão 16
+Correção específica da visualização de imagens no iPhone/Safari/PWA: carregamento assíncrono do Blob salvo no IndexedDB, Data URL como fonte primária no iOS, Object URL mantida até fechar/trocar a imagem, mensagens de erro e cache versionado com estratégia network-first.
