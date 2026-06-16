@@ -1123,3 +1123,44 @@ body[data-theme="adolescente-menina"] {
     image-rendering: auto;
   }
 }
+
+
+/* Correção v18: imagem criada diretamente dentro do modal visível no Safari/iOS. */
+.photo-viewer-stage {
+  width: 100%;
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+}
+.photo-viewer-stage > img.memory-viewer-image,
+#memoryCarouselStage > img.memory-viewer-image {
+  display: block !important;
+  width: auto !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: 78vh !important;
+  max-height: 78dvh !important;
+  object-fit: contain !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  position: relative !important;
+  z-index: 2 !important;
+  margin: 0 auto !important;
+  transform: none !important;
+  -webkit-transform: none !important;
+}
+#memoryCarouselStage > img.memory-viewer-image {
+  max-height: 62vh !important;
+  max-height: 62dvh !important;
+}
+@supports (-webkit-touch-callout: none) {
+  .photo-viewer-stage > img.memory-viewer-image,
+  #memoryCarouselStage > img.memory-viewer-image {
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    image-rendering: auto;
+  }
+}

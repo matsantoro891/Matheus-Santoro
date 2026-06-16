@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'crescer-juntos-v3';
 const EXAM_DB_NAME = 'crescer-juntos-exam-files';
-const EXAM_DB_VERSION = 1;
+const EXAM_DB_VERSION = 2;
 const EXAM_STORE_NAME = 'attachments';
 const DEFAULT_CATEGORIES = ['Peso', 'Altura', 'Desenvolvimento motor', 'Categoria personalizada'];
 const GROWTH_PERCENTILES = [
@@ -64,7 +64,7 @@ function prepareStateForLocalStorage(value) {
   const result = {};
   for (const [key, childValue] of Object.entries(value)) {
     if ((key === 'dataUrl' || key === 'thumbnail') && typeof childValue === 'string' && childValue.startsWith('blob:')) continue;
-    if (key === 'blob' || key === 'thumbnailBlob') continue;
+    if (key === 'blob' || key === 'thumbnailBlob' || key === 'viewerBlob') continue;
     result[key] = prepareStateForLocalStorage(childValue);
   }
   return result;
@@ -382,6 +382,177 @@ async function createImageThumbnailBlob(blob, maxSize = 480) {
   }
 }
 
+
+async function createNormalizedViewerBlob(blob, maxDimension = 2048, quality = 0.88) {
+  if (!blob || !String(blob.type || '').startsWith('image/')) return null;
+  let objectUrl = '';
+  let bitmap = null;
+  try {
+    let width = 0;
+    let height = 0;
+    let drawable = null;
+
+    if ('createImageBitmap' in window) {
+      try {
+        bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+        width = bitmap.width;
+        height = bitmap.height;
+        drawable = bitmap;
+      } catch (bitmapError) {
+        console.warn('[Crescer Juntos] createImageBitmap não decodificou a imagem; usando fallback.', bitmapError);
+      }
+    }
+
+    if (!drawable) {
+      objectUrl = URL.createObjectURL(blobWithUsableType(blob, { type: blob.type }));
+      const image = await waitForImageLoad(objectUrl, 30000);
+      width = image.naturalWidth || image.width;
+      height = image.naturalHeight || image.height;
+      drawable = image;
+    }
+
+    if (!width || !height) return null;
+    const scale = Math.min(1, maxDimension / Math.max(width, height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const context = canvas.getContext('2d', { alpha: false });
+    if (!context) return null;
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(drawable, 0, 0, canvas.width, canvas.height);
+
+    if (canvas.toBlob) {
+      const normalized = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+      if (normalized?.size) return normalized;
+    }
+    return dataUrlToBlob(canvas.toDataURL('image/jpeg', quality));
+  } catch (error) {
+    console.warn('[Crescer Juntos] Não foi possível criar JPEG normalizado para visualização.', error);
+    return null;
+  } finally {
+    if (bitmap?.close) bitmap.close();
+    revokeObjectUrl(objectUrl);
+  }
+}
+
+function nextPaint() {
+  return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+
+async function getPersistentImagePayload(ref) {
+  if (!ref) throw new Error('Referência da imagem ausente.');
+  let record = null;
+  if (typeof ref === 'object' && ref.id) record = await getExamAttachmentRecord(ref.id).catch(() => null);
+
+  let originalBlob = record?.blob || await getExamAttachmentBlob(ref);
+  originalBlob = blobWithUsableType(originalBlob, ref || {});
+  if (!originalBlob?.size) throw new Error('Arquivo de imagem não encontrado no armazenamento local.');
+
+  let viewerBlob = record?.viewerBlob || null;
+  if (!viewerBlob) {
+    viewerBlob = await createNormalizedViewerBlob(originalBlob, 2048, 0.88);
+    if (viewerBlob && record?.id) {
+      record = { ...record, viewerBlob, updatedAt: new Date().toISOString() };
+      await putExamAttachmentRecord(record).catch(error => console.warn('[Crescer Juntos] Falha ao persistir imagem normalizada.', error));
+    }
+  }
+  return { originalBlob, viewerBlob, record };
+}
+
+function mountDataUrlImageInVisibleStage(stage, dataUrl, blob, options = {}) {
+  return new Promise(async (resolve, reject) => {
+    const img = document.createElement('img');
+    img.className = options.className || 'memory-viewer-image';
+    if (options.id) img.id = options.id;
+    img.alt = options.alt || '';
+    img.draggable = false;
+    img.decoding = 'auto';
+    img.loading = 'eager';
+    img.style.display = 'block';
+    img.style.maxWidth = '100%';
+    img.style.width = 'auto';
+    img.style.height = 'auto';
+    img.style.maxHeight = options.maxHeight || '62vh';
+    img.style.objectFit = 'contain';
+    img.style.opacity = '1';
+    img.style.visibility = 'visible';
+
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      const error = new Error('Tempo excedido ao carregar a imagem no visualizador.');
+      logImageViewerDebug('timeout no DOM visível', dataUrl, blob, error);
+      reject(error);
+    }, 30000);
+
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      img.onload = null;
+      img.onerror = null;
+      callback(value);
+    };
+
+    img.onload = () => {
+      const valid = img.complete === true && img.naturalWidth > 0 && img.naturalHeight > 0;
+      console.info('[Crescer Juntos][Visualizador de imagem][DOM visível]', {
+        src: String(img.currentSrc || img.src || '').startsWith('data:') ? `${String(img.currentSrc || img.src).slice(0, 96)}…` : (img.currentSrc || img.src),
+        blobSize: Number(blob?.size || 0),
+        blobType: blob?.type || '',
+        complete: img.complete,
+        naturalWidth: img.naturalWidth,
+        naturalHeight: img.naturalHeight,
+        iOSWebKit: IS_IOS_WEBKIT
+      });
+      if (!valid) {
+        const error = new Error('A imagem foi carregada sem dimensões válidas.');
+        logImageViewerDebug('dimensões inválidas no DOM visível', img.currentSrc || img.src, blob, error);
+        finish(reject, error);
+        return;
+      }
+      finish(resolve, img);
+    };
+
+    img.onerror = event => {
+      const error = new Error('O dispositivo não conseguiu renderizar esta imagem.');
+      error.event = event;
+      logImageViewerDebug('erro no DOM visível', img.currentSrc || img.src, blob, error);
+      finish(reject, error);
+    };
+
+    stage.replaceChildren(img);
+    await nextPaint();
+    img.src = dataUrl;
+  });
+}
+
+async function loadPersistentImageIntoVisibleStage(ref, stage, options = {}) {
+  const { originalBlob, viewerBlob } = await getPersistentImagePayload(ref);
+  const candidates = [];
+  if (viewerBlob?.size) candidates.push({ blob: viewerBlob, label: 'JPEG normalizado' });
+  candidates.push({ blob: originalBlob, label: 'arquivo original' });
+
+  let lastError = null;
+  for (const candidate of candidates) {
+    try {
+      const dataUrl = await blobToDataUrl(candidate.blob);
+      logImageViewerDebug(`fonte preparada: ${candidate.label}`, dataUrl, candidate.blob);
+      return await mountDataUrlImageInVisibleStage(stage, dataUrl, candidate.blob, options);
+    } catch (error) {
+      lastError = error;
+      logImageViewerDebug(`falha ao exibir: ${candidate.label}`, '', candidate.blob, error);
+      stage.innerHTML = '<div class="media-stage-loading"><span class="media-spinner" aria-hidden="true"></span><span>Tentando outra versão da imagem...</span></div>';
+      await nextPaint();
+    }
+  }
+  throw lastError || new Error('Não foi possível exibir a imagem.');
+}
+
 function logImageViewerDebug(stage, src, blob, error = null) {
   const safeSrc = String(src || '').startsWith('data:')
     ? `${String(src).slice(0, 96)}…`
@@ -397,112 +568,6 @@ function logImageViewerDebug(stage, src, blob, error = null) {
   };
   if (error) console.error('[Crescer Juntos][Visualizador de imagem]', payload);
   else console.info('[Crescer Juntos][Visualizador de imagem]', payload);
-}
-
-function loadImageNode(src, alt = '', timeoutMs = 20000) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      reject(new Error('Tempo excedido ao carregar a imagem.'));
-    }, timeoutMs);
-    const cleanup = () => {
-      clearTimeout(timer);
-      img.onload = null;
-      img.onerror = null;
-    };
-    img.alt = alt;
-    img.draggable = false;
-    img.decoding = 'async';
-    img.style.display = 'block';
-    img.style.maxWidth = '100%';
-    img.style.width = 'auto';
-    img.style.height = 'auto';
-    img.style.maxHeight = '78vh';
-    img.style.objectFit = 'contain';
-    img.style.opacity = '1';
-    img.style.visibility = 'visible';
-    img.onload = async () => {
-      if (settled) return;
-      try {
-        if (img.decode) await img.decode().catch(() => {});
-      } finally {
-        settled = true;
-        cleanup();
-        if ((img.naturalWidth || 0) < 1 || (img.naturalHeight || 0) < 1) {
-          reject(new Error('A imagem foi carregada sem dimensões válidas.'));
-        } else {
-          resolve(img);
-        }
-      }
-    };
-    img.onerror = event => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      const error = new Error('O Safari não conseguiu decodificar a imagem por esta fonte.');
-      error.event = event;
-      reject(error);
-    };
-    img.src = src;
-  });
-}
-
-async function preparePersistentImageElement(ref, alt = 'Imagem') {
-  const blob = blobWithUsableType(await getExamAttachmentBlob(ref), ref || {});
-  if (!blob || !blob.size) throw new Error('Arquivo de imagem não encontrado no armazenamento local.');
-
-  // No iPhone/iPad, Data URL é a fonte primária para evitar o modal branco
-  // observado no WebKit com Blob URLs recuperadas do IndexedDB.
-  if (IS_IOS_WEBKIT) {
-    try {
-      const dataUrl = await blobToDataUrl(blob);
-      const image = await loadImageNode(dataUrl, alt, 30000);
-      logImageViewerDebug('iOS: base64 carregado', dataUrl, blob);
-      return { image, src: dataUrl, objectUrl: '', blob, sourceKind: 'dataURL' };
-    } catch (iosDataError) {
-      logImageViewerDebug('iOS: falha no base64; tentando objectURL', '', blob, iosDataError);
-      let iosObjectUrl = '';
-      try {
-        iosObjectUrl = URL.createObjectURL(blob);
-        const image = await loadImageNode(iosObjectUrl, alt);
-        logImageViewerDebug('iOS: objectURL alternativo carregado', iosObjectUrl, blob);
-        return { image, src: iosObjectUrl, objectUrl: iosObjectUrl, blob, sourceKind: 'objectURL' };
-      } catch (iosObjectError) {
-        logImageViewerDebug('iOS: falha também no objectURL', iosObjectUrl, blob, iosObjectError);
-        revokeObjectUrl(iosObjectUrl);
-        throw new Error(`Não foi possível abrir a imagem neste iPhone/iPad. ${iosObjectError.message || iosDataError.message || ''}`.trim());
-      }
-    }
-  }
-
-  let objectUrl = '';
-  let firstError = null;
-  try {
-    objectUrl = URL.createObjectURL(blob);
-    const image = await loadImageNode(objectUrl, alt);
-    logImageViewerDebug('objectURL carregado', objectUrl, blob);
-    return { image, src: objectUrl, objectUrl, blob, sourceKind: 'objectURL' };
-  } catch (error) {
-    firstError = error;
-    logImageViewerDebug('falha no objectURL; iniciando fallback', objectUrl, blob, error);
-    revokeObjectUrl(objectUrl);
-    objectUrl = '';
-  }
-
-  try {
-    const dataUrl = await blobToDataUrl(blob);
-    const image = await loadImageNode(dataUrl, alt, 30000);
-    logImageViewerDebug('fallback base64 carregado', dataUrl, blob);
-    return { image, src: dataUrl, objectUrl: '', blob, sourceKind: 'dataURL' };
-  } catch (fallbackError) {
-    logImageViewerDebug('falha no fallback base64', '', blob, fallbackError);
-    const combined = new Error(`Não foi possível abrir a imagem neste aparelho. ${fallbackError.message || firstError?.message || ''}`.trim());
-    combined.cause = fallbackError;
-    throw combined;
-  }
 }
 
 async function preparePersistentVideoSource(ref) {
@@ -592,15 +657,21 @@ async function deleteExamAttachmentRecord(id) {
 async function storeLocalFile(file, existingId = '', extra = {}) {
   if (!file) return null;
   const id = existingId || extra.id || uid();
-  const blob = file instanceof Blob ? file : new Blob([file], { type: extra.type || 'application/octet-stream' });
+  const rawBlob = file instanceof Blob ? file : new Blob([file], { type: extra.type || 'application/octet-stream' });
   const name = extra.name || file.name || 'arquivo';
-  const type = extra.type || file.type || blob.type || 'application/octet-stream';
+  const type = extra.type || file.type || rawBlob.type || inferMimeFromName(name) || 'application/octet-stream';
+  const blob = blobWithUsableType(rawBlob, { type, name }) || rawBlob;
   let thumbnailBlob = extra.thumbnailBlob || null;
+  let viewerBlob = extra.viewerBlob || null;
   if (!thumbnailBlob && extra.thumbnailDataUrl && String(extra.thumbnailDataUrl).startsWith('data:')) {
     thumbnailBlob = dataUrlToBlob(extra.thumbnailDataUrl);
   }
-  if (!thumbnailBlob && String(type).startsWith('image/')) {
-    thumbnailBlob = await createImageThumbnailBlob(blob).catch(() => null);
+  if (!viewerBlob && extra.viewerDataUrl && String(extra.viewerDataUrl).startsWith('data:')) {
+    viewerBlob = dataUrlToBlob(extra.viewerDataUrl);
+  }
+  if (String(type).startsWith('image/')) {
+    if (!thumbnailBlob) thumbnailBlob = await createImageThumbnailBlob(blob).catch(() => null);
+    if (!viewerBlob) viewerBlob = await createNormalizedViewerBlob(blob, 2048, 0.88).catch(() => null);
   }
   const metadata = {
     ...extra,
@@ -616,7 +687,9 @@ async function storeLocalFile(file, existingId = '', extra = {}) {
   delete metadata.thumbnail;
   delete metadata.thumbnailDataUrl;
   delete metadata.thumbnailBlob;
-  await putExamAttachmentRecord({ ...metadata, blob, thumbnailBlob });
+  delete metadata.viewerDataUrl;
+  delete metadata.viewerBlob;
+  await putExamAttachmentRecord({ ...metadata, blob, thumbnailBlob, viewerBlob });
   return {
     ...metadata,
     dataUrl: createRuntimeObjectUrl(blob),
@@ -635,10 +708,29 @@ async function hydrateLocalFileRef(ref, context = {}) {
   if (ref.storage === 'indexeddb' && ref.id) {
     let record = await getExamAttachmentRecord(ref.id).catch(() => null);
     if (!record?.blob) return { ...ref, dataUrl: '', thumbnail: '' };
-    if (!record.thumbnailBlob && String(ref.type || record.type || record.blob.type || '').startsWith('image/')) {
-      const generatedThumbnail = await createImageThumbnailBlob(record.blob).catch(() => null);
-      if (generatedThumbnail) {
-        record = { ...record, thumbnailBlob: generatedThumbnail, updatedAt: new Date().toISOString() };
+    if (String(ref.type || record.type || record.blob.type || inferMimeFromName(ref.name || record.name) || '').startsWith('image/')) {
+      let changedRecord = false;
+      const typedImageBlob = blobWithUsableType(record.blob, { type: ref.type || record.type, name: ref.name || record.name }) || record.blob;
+      if (typedImageBlob !== record.blob || typedImageBlob.type !== record.blob.type) {
+        record = { ...record, blob: typedImageBlob };
+        changedRecord = true;
+      }
+      if (!record.thumbnailBlob) {
+        const generatedThumbnail = await createImageThumbnailBlob(typedImageBlob).catch(() => null);
+        if (generatedThumbnail) {
+          record = { ...record, thumbnailBlob: generatedThumbnail };
+          changedRecord = true;
+        }
+      }
+      if (!record.viewerBlob) {
+        const generatedViewer = await createNormalizedViewerBlob(typedImageBlob, 2048, 0.88).catch(() => null);
+        if (generatedViewer) {
+          record = { ...record, viewerBlob: generatedViewer };
+          changedRecord = true;
+        }
+      }
+      if (changedRecord) {
+        record.updatedAt = new Date().toISOString();
         await putExamAttachmentRecord(record).catch(console.warn);
       }
     }
@@ -657,7 +749,8 @@ async function hydrateLocalFileRef(ref, context = {}) {
     return storeLocalFile(file, ref.id || context.id || '', {
       ...context,
       ...ref,
-      thumbnailDataUrl: ref.thumbnail || ''
+      thumbnailDataUrl: ref.thumbnail || '',
+      viewerDataUrl: ref.viewerDataUrl || ref.viewer || ''
     });
   }
   if (ref.dataUrl && String(ref.dataUrl).startsWith('blob:')) return ref;
@@ -829,7 +922,13 @@ function downloadText(filename, text, mime = 'text/plain') {
 
 function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./service-worker.js?v=16', { updateViaCache: 'none' })
+    let reloadingForNewWorker = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloadingForNewWorker) return;
+      reloadingForNewWorker = true;
+      window.location.reload();
+    });
+    navigator.serviceWorker.register('./service-worker.js?v=18', { updateViaCache: 'none' })
       .then(registration => registration.update().catch(() => {}))
       .catch(console.warn);
   }
@@ -945,49 +1044,29 @@ function formatFileSize(bytes) {
 
 async function openPersistentPhotoViewer(fileRef, title = 'Imagem') {
   const modal = $('photoModal');
+  const stage = $('photoViewerStage');
   const errorBox = $('photoViewerError');
-  showMediaLoading('Carregando imagem...');
+  if (!modal || !stage) return showToast('Visualizador de imagem indisponível.');
 
+  setActivePhotoViewerUrl('');
   if (errorBox) {
     errorBox.classList.add('hidden');
     errorBox.textContent = '';
   }
+  stage.innerHTML = '<div class="media-stage-loading"><span class="media-spinner" aria-hidden="true"></span><span>Carregando imagem...</span></div>';
+  modal.classList.remove('hidden');
+  await nextPaint();
 
   try {
-    const prepared = await preparePersistentImageElement(fileRef, title || 'Imagem');
-    const previousImage = $('memoryPhotoViewer');
-    const image = prepared.image;
-    image.id = 'memoryPhotoViewer';
-    image.className = '';
-    image.alt = title || '';
-    image.setAttribute('aria-label', title || 'Imagem');
-
-    if (previousImage) previousImage.replaceWith(image);
-    else modal?.querySelector('.photo-modal-card')?.appendChild(image);
-
-    // A URL anterior só é revogada depois que a nova imagem terminou de carregar.
-    setActivePhotoViewerUrl(prepared.objectUrl || '');
-    hideMediaLoading();
-    modal?.classList.remove('hidden');
-    requestAnimationFrame(() => {
-      image.style.display = 'block';
-      image.style.opacity = '1';
-      image.style.visibility = 'visible';
-      logImageViewerDebug('modal exibido', image.currentSrc || image.src, prepared.blob);
+    await loadPersistentImageIntoVisibleStage(fileRef, stage, {
+      id: 'memoryPhotoViewer',
+      className: 'memory-viewer-image',
+      alt: title || 'Imagem',
+      maxHeight: '78vh'
     });
   } catch (error) {
     console.error('[Crescer Juntos] Falha ao abrir imagem do exame', error);
-    hideMediaLoading();
-    const image = $('memoryPhotoViewer');
-    if (image) {
-      image.removeAttribute('src');
-      image.style.display = 'none';
-    }
-    if (errorBox) {
-      errorBox.innerHTML = `<strong>Não foi possível exibir a imagem.</strong><p>${escapeHtml(error.message || 'O arquivo pode estar danificado ou em formato não compatível com este aparelho.')}</p>`;
-      errorBox.classList.remove('hidden');
-    }
-    modal?.classList.remove('hidden');
+    stage.innerHTML = viewerErrorHtml(error.message || 'O arquivo pode estar danificado ou em formato não compatível com este aparelho.');
   }
 }
 
@@ -1283,10 +1362,11 @@ window.openMemoryViewer = async function(memoryId, index = 0) {
   form.elements.description.value = memory.description || '';
   form.elements.favorite.value = String(!!memory.favorite);
   form.elements.albumId.value = memory.albumId || '';
-  showMediaLoading('Carregando imagem...');
-  await renderMemoryViewer({ opening: true });
-  hideMediaLoading();
+  const stage = $('memoryCarouselStage');
+  stage.innerHTML = '<div class="media-stage-loading"><span class="media-spinner" aria-hidden="true"></span><span>Carregando imagem...</span></div>';
   $('memoryViewerModal').classList.remove('hidden');
+  await nextPaint();
+  await renderMemoryViewer({ opening: true });
 };
 
 async function renderMemoryViewer(options = {}) {
@@ -1296,33 +1376,43 @@ async function renderMemoryViewer(options = {}) {
   const assets = memoryAssets(memory);
   const asset = assets[activeMemoryAssetIndex];
   const stage = $('memoryCarouselStage');
-  if (!options.opening) stage.innerHTML = '<div class="media-stage-loading"><span class="media-spinner" aria-hidden="true"></span><span>Carregando...</span></div>';
+  stage.innerHTML = '<div class="media-stage-loading"><span class="media-spinner" aria-hidden="true"></span><span>Carregando imagem...</span></div>';
+  $('memoryAssetCounter').textContent = assets.length ? `${activeMemoryAssetIndex + 1} de ${assets.length}` : '0 de 0';
+  renderMemoryAttachmentList(memory);
+  await nextPaint();
 
   try {
     if (!asset) {
       setActiveMemoryViewerUrl('');
       stage.innerHTML = '<div class="empty-stage">Sem anexos nesta memória.</div>';
     } else if (isImage(asset)) {
-      const prepared = await preparePersistentImageElement(asset, asset.name || 'Foto da memória');
-      if (requestToken !== mediaViewerRequestToken) {
-        revokeObjectUrl(prepared.objectUrl);
-        return;
+      setActiveMemoryViewerUrl('');
+      const payload = await getPersistentImagePayload(asset);
+      if (requestToken !== mediaViewerRequestToken) return;
+      const candidates = [];
+      if (payload.viewerBlob?.size) candidates.push({ blob: payload.viewerBlob, label: 'JPEG normalizado' });
+      candidates.push({ blob: payload.originalBlob, label: 'arquivo original' });
+      let loaded = false;
+      let lastError = null;
+      for (const candidate of candidates) {
+        if (requestToken !== mediaViewerRequestToken) return;
+        try {
+          const dataUrl = await blobToDataUrl(candidate.blob);
+          logImageViewerDebug(`carrossel: fonte preparada (${candidate.label})`, dataUrl, candidate.blob);
+          await mountDataUrlImageInVisibleStage(stage, dataUrl, candidate.blob, {
+            className: 'memory-viewer-image',
+            alt: asset.name || 'Foto da memória',
+            maxHeight: '62vh'
+          });
+          loaded = true;
+          break;
+        } catch (error) {
+          lastError = error;
+          stage.innerHTML = '<div class="media-stage-loading"><span class="media-spinner" aria-hidden="true"></span><span>Tentando outra versão da imagem...</span></div>';
+          await nextPaint();
+        }
       }
-
-      const image = prepared.image;
-      image.className = 'memory-viewer-image';
-      image.alt = asset.name || 'Foto da memória';
-      image.style.maxHeight = '62vh';
-      stage.replaceChildren(image);
-
-      // Revoga a URL anterior somente após a nova imagem estar totalmente pronta.
-      setActiveMemoryViewerUrl(prepared.objectUrl || '');
-      requestAnimationFrame(() => {
-        image.style.display = 'block';
-        image.style.opacity = '1';
-        image.style.visibility = 'visible';
-        logImageViewerDebug('carrossel exibido', image.currentSrc || image.src, prepared.blob);
-      });
+      if (!loaded) throw lastError || new Error('Não foi possível exibir a imagem.');
     } else if (isVideo(asset)) {
       const prepared = await preparePersistentVideoSource(asset);
       if (requestToken !== mediaViewerRequestToken) {
@@ -1350,8 +1440,6 @@ async function renderMemoryViewer(options = {}) {
       stage.innerHTML = viewerErrorHtml(error.message || 'Tente novamente.');
     }
   }
-  $('memoryAssetCounter').textContent = assets.length ? `${activeMemoryAssetIndex + 1} de ${assets.length}` : '0 de 0';
-  renderMemoryAttachmentList(memory);
 }
 
 function renderMemoryAttachmentList(memory) {
@@ -2266,13 +2354,8 @@ function closeVideoModal() {
 
 function closePhotoModal() {
   setActivePhotoViewerUrl('');
-  const image = $('memoryPhotoViewer');
-  if (image) {
-    image.onload = null;
-    image.onerror = null;
-    image.removeAttribute('src');
-    image.style.display = 'none';
-  }
+  const stage = $('photoViewerStage');
+  if (stage) stage.replaceChildren();
   const errorBox = $('photoViewerError');
   if (errorBox) {
     errorBox.textContent = '';
@@ -2322,10 +2405,12 @@ async function fileRefForBackup(ref, fallbackName = 'arquivo') {
   }
   let blob = null;
   let thumbnailBlob = null;
+  let viewerBlob = null;
   if (ref.id) {
     const record = await getExamAttachmentRecord(ref.id).catch(() => null);
     blob = record?.blob || null;
     thumbnailBlob = record?.thumbnailBlob || null;
+    viewerBlob = record?.viewerBlob || null;
   }
   if (!blob && ref.dataUrl) {
     if (String(ref.dataUrl).startsWith('data:')) blob = dataUrlToBlob(ref.dataUrl);
@@ -2343,6 +2428,7 @@ async function fileRefForBackup(ref, fallbackName = 'arquivo') {
     storage: 'backup-base64'
   };
   if (thumbnailBlob) backupRef.thumbnail = await blobToDataUrl(thumbnailBlob);
+  if (viewerBlob) backupRef.viewerDataUrl = await blobToDataUrl(viewerBlob);
   return backupRef;
 }
 

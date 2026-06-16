@@ -66,3 +66,7 @@ Correção específica da visualização de imagens no iPhone/Safari/PWA: carreg
 - Na tela inicial, o atalho de Calendário/Eventos passou a exibir apenas “Eventos”.
 - O ícone de calendário foi mantido.
 - Nenhuma outra funcionalidade, tela, texto, cor ou layout foi alterado.
+
+
+## Versão 18
+Correção do visualizador de imagens no iPhone/Safari: modal visível antes da atribuição do DataURL, JPEG normalizado persistente no IndexedDB, fallback para o arquivo original e cache PWA unificado em v18.

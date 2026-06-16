@@ -1,11 +1,11 @@
-const CACHE_NAME = 'crescer-juntos-v17-eventos-home-cache';
+const CACHE_NAME = 'crescer-juntos-v18-cache';
 const CORE_ASSETS = [
   './',
   './index.html',
-  './styles.css?v=17',
-  './app.js?v=17',
-  './growth-reference.js?v=17',
-  './manifest.json?v=17',
+  './styles.css?v=18',
+  './app.js?v=18',
+  './growth-reference.js?v=18',
+  './manifest.json?v=18',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
@@ -20,10 +20,14 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(Promise.all([
-    caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))),
-    self.clients.claim()
-  ]));
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)));
+    if (self.registration.navigationPreload) {
+      try { await self.registration.navigationPreload.enable(); } catch (error) { console.warn(error); }
+    }
+    await self.clients.claim();
+  })());
 });
 
 async function networkFirst(request) {
