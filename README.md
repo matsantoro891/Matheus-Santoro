@@ -60,3 +60,9 @@ Os anexos de Saúde > Exames agora são armazenados permanentemente em IndexedDB
 
 ## Versão 16
 Correção específica da visualização de imagens no iPhone/Safari/PWA: carregamento assíncrono do Blob salvo no IndexedDB, Data URL como fonte primária no iOS, Object URL mantida até fechar/trocar a imagem, mensagens de erro e cache versionado com estratégia network-first.
+
+
+## Atualização v17
+- Na tela inicial, o atalho de Calendário/Eventos passou a exibir apenas “Eventos”.
+- O ícone de calendário foi mantido.
+- Nenhuma outra funcionalidade, tela, texto, cor ou layout foi alterado.
