@@ -15,6 +15,7 @@ let state = loadState();
 let memoryView = 'grid';
 let activeAlbumFilter = 'all';
 let toastTimer = null;
+const runtimeObjectUrls = new Set();
 
 function uid() {
   return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
@@ -44,11 +45,23 @@ function loadState() {
 
 function saveState() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(prepareStateForLocalStorage(state)));
   } catch (error) {
-    showToast('Não foi possível salvar. O navegador pode estar sem espaço para fotos/vídeos.');
+    showToast('Não foi possível salvar. O navegador pode estar sem espaço para os dados.');
     console.error(error);
   }
+}
+
+function prepareStateForLocalStorage(value) {
+  if (Array.isArray(value)) return value.map(prepareStateForLocalStorage);
+  if (!value || typeof value !== 'object') return value;
+  const result = {};
+  for (const [key, childValue] of Object.entries(value)) {
+    if ((key === 'dataUrl' || key === 'thumbnail') && typeof childValue === 'string' && childValue.startsWith('blob:')) continue;
+    if (key === 'blob' || key === 'thumbnailBlob') continue;
+    result[key] = prepareStateForLocalStorage(childValue);
+  }
+  return result;
 }
 
 function currentChild() {
@@ -73,13 +86,13 @@ function normalizeChild(child) {
   child.profilePhoto ||= '';
   child.miniBio ||= '';
   child.memories.forEach(memory => {
-    if (!Array.isArray(memory.files)) {
-      memory.files = memory.file ? [memory.file] : [];
-    }
+    if (!Array.isArray(memory.files)) memory.files = memory.file ? [memory.file] : [];
     memory.files = memory.files.filter(Boolean).slice(0, 5).map((asset, index) => ({
+      ...asset,
       id: asset.id || uid(),
       name: asset.name || `anexo-${index + 1}`,
       type: asset.type || 'application/octet-stream',
+      size: Number(asset.size || 0),
       dataUrl: asset.dataUrl || asset.data || '',
       thumbnail: asset.thumbnail || '',
       createdAt: asset.createdAt || new Date().toISOString()
@@ -207,7 +220,7 @@ function fileToDataUrl(file) {
     if (!file) return resolve(null);
     const reader = new FileReader();
     reader.onload = () => resolve({
-      name: file.name,
+      name: file.name || 'arquivo',
       type: file.type || 'application/octet-stream',
       size: Number(file.size || 0),
       dataUrl: reader.result
@@ -235,15 +248,35 @@ function dataUrlToBlob(dataUrl) {
   return new Blob([bytes], { type: mime });
 }
 
+function createRuntimeObjectUrl(blob) {
+  if (!blob) return '';
+  const url = URL.createObjectURL(blob);
+  runtimeObjectUrls.add(url);
+  return url;
+}
+
+function revokeRuntimeObjectUrls() {
+  runtimeObjectUrls.forEach(url => URL.revokeObjectURL(url));
+  runtimeObjectUrls.clear();
+}
+
+function fileRefUrl(ref) {
+  if (!ref) return '';
+  if (typeof ref === 'string') return ref;
+  return ref.dataUrl || '';
+}
+
+function fileRefThumbnail(ref) {
+  return ref && typeof ref === 'object' ? (ref.thumbnail || '') : '';
+}
+
 function openExamDb() {
   return new Promise((resolve, reject) => {
     if (!('indexedDB' in window)) return reject(new Error('IndexedDB não disponível'));
     const request = indexedDB.open(EXAM_DB_NAME, EXAM_DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
-      if (!db.objectStoreNames.contains(EXAM_STORE_NAME)) {
-        db.createObjectStore(EXAM_STORE_NAME, { keyPath: 'id' });
-      }
+      if (!db.objectStoreNames.contains(EXAM_STORE_NAME)) db.createObjectStore(EXAM_STORE_NAME, { keyPath: 'id' });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error || new Error('Falha ao abrir IndexedDB'));
@@ -256,7 +289,7 @@ async function putExamAttachmentRecord(record) {
     const transaction = db.transaction(EXAM_STORE_NAME, 'readwrite');
     transaction.objectStore(EXAM_STORE_NAME).put(record);
     transaction.oncomplete = () => { db.close(); resolve(record); };
-    transaction.onerror = () => { db.close(); reject(transaction.error || new Error('Falha ao salvar anexo')); };
+    transaction.onerror = () => { db.close(); reject(transaction.error || new Error('Falha ao salvar arquivo')); };
   });
 }
 
@@ -267,7 +300,7 @@ async function getExamAttachmentRecord(id) {
     const transaction = db.transaction(EXAM_STORE_NAME, 'readonly');
     const request = transaction.objectStore(EXAM_STORE_NAME).get(id);
     request.onsuccess = () => { db.close(); resolve(request.result || null); };
-    request.onerror = () => { db.close(); reject(request.error || new Error('Falha ao recuperar anexo')); };
+    request.onerror = () => { db.close(); reject(request.error || new Error('Falha ao recuperar arquivo')); };
   });
 }
 
@@ -278,76 +311,156 @@ async function deleteExamAttachmentRecord(id) {
     const transaction = db.transaction(EXAM_STORE_NAME, 'readwrite');
     transaction.objectStore(EXAM_STORE_NAME).delete(id);
     transaction.oncomplete = () => { db.close(); resolve(); };
-    transaction.onerror = () => { db.close(); reject(transaction.error || new Error('Falha ao excluir anexo')); };
+    transaction.onerror = () => { db.close(); reject(transaction.error || new Error('Falha ao excluir arquivo')); };
   });
 }
 
-async function storeExamAttachment(file, existingId = '') {
+async function storeLocalFile(file, existingId = '', extra = {}) {
   if (!file) return null;
-  const id = existingId || uid();
-  const type = file.type || 'application/octet-stream';
+  const id = existingId || extra.id || uid();
+  const blob = file instanceof Blob ? file : new Blob([file], { type: extra.type || 'application/octet-stream' });
+  const name = extra.name || file.name || 'arquivo';
+  const type = extra.type || file.type || blob.type || 'application/octet-stream';
+  let thumbnailBlob = extra.thumbnailBlob || null;
+  if (!thumbnailBlob && extra.thumbnailDataUrl && String(extra.thumbnailDataUrl).startsWith('data:')) {
+    thumbnailBlob = dataUrlToBlob(extra.thumbnailDataUrl);
+  }
   const metadata = {
+    ...extra,
     id,
-    name: file.name || 'arquivo',
+    name,
     type,
-    size: Number(file.size || 0),
+    size: Number(extra.size || file.size || blob.size || 0),
     storage: 'indexeddb',
+    createdAt: extra.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
-  try {
-    await putExamAttachmentRecord({ ...metadata, blob: file });
-    return metadata;
-  } catch (error) {
-    console.warn('IndexedDB indisponível; usando Base64 como alternativa.', error);
-    const fallback = await fileToDataUrl(file);
-    return { ...metadata, ...fallback, storage: 'base64' };
-  }
+  delete metadata.dataUrl;
+  delete metadata.thumbnail;
+  delete metadata.thumbnailDataUrl;
+  delete metadata.thumbnailBlob;
+  await putExamAttachmentRecord({ ...metadata, blob, thumbnailBlob });
+  return {
+    ...metadata,
+    dataUrl: createRuntimeObjectUrl(blob),
+    thumbnail: thumbnailBlob ? createRuntimeObjectUrl(thumbnailBlob) : ''
+  };
 }
 
-async function getExamAttachmentBlob(fileMeta) {
-  if (!fileMeta) return null;
-  if (fileMeta.dataUrl) return dataUrlToBlob(fileMeta.dataUrl);
-  if (fileMeta.id) {
-    try {
-      const record = await getExamAttachmentRecord(fileMeta.id);
-      return record?.blob || null;
-    } catch (error) {
-      console.warn('Não foi possível recuperar o anexo do exame.', error);
-      return null;
-    }
+async function hydrateLocalFileRef(ref, context = {}) {
+  if (!ref) return ref;
+  if (typeof ref === 'string') {
+    if (!ref.startsWith('data:')) return ref;
+    const blob = dataUrlToBlob(ref);
+    const file = new File([blob], context.name || 'arquivo', { type: blob.type || context.type || 'application/octet-stream' });
+    return storeLocalFile(file, context.id || '', context);
   }
-  return null;
+  if (ref.storage === 'indexeddb' && ref.id) {
+    const record = await getExamAttachmentRecord(ref.id).catch(() => null);
+    if (!record?.blob) return { ...ref, dataUrl: '', thumbnail: '' };
+    return {
+      ...ref,
+      name: ref.name || record.name || 'arquivo',
+      type: ref.type || record.type || record.blob.type || 'application/octet-stream',
+      size: Number(ref.size || record.size || record.blob.size || 0),
+      dataUrl: createRuntimeObjectUrl(record.blob),
+      thumbnail: record.thumbnailBlob ? createRuntimeObjectUrl(record.thumbnailBlob) : ''
+    };
+  }
+  if (ref.dataUrl && String(ref.dataUrl).startsWith('data:')) {
+    const blob = dataUrlToBlob(ref.dataUrl);
+    const file = new File([blob], ref.name || context.name || 'arquivo', { type: ref.type || blob.type || 'application/octet-stream' });
+    return storeLocalFile(file, ref.id || context.id || '', {
+      ...context,
+      ...ref,
+      thumbnailDataUrl: ref.thumbnail || ''
+    });
+  }
+  if (ref.dataUrl && String(ref.dataUrl).startsWith('blob:')) return ref;
+  return ref;
 }
 
-async function migrateLegacyExamAttachments(targetState = state) {
+async function hydrateAllLocalFiles(targetState = state) {
+  revokeRuntimeObjectUrls();
   let changed = false;
   for (const child of targetState.children || []) {
-    child.exams ||= [];
-    for (const exam of child.exams) {
-      const file = exam.file;
-      if (!file?.dataUrl || file.storage === 'indexeddb') continue;
-      try {
-        const blob = dataUrlToBlob(file.dataUrl);
-        const stored = await storeExamAttachment(new File([blob], file.name || 'arquivo', { type: file.type || blob.type }));
-        exam.file = { ...stored, size: Number(file.size || blob.size || 0) };
-        changed = true;
-      } catch (error) {
-        console.warn('Falha ao migrar anexo antigo de exame.', error);
-      }
+    normalizeChild(child);
+    if (child.profilePhoto) {
+      const before = child.profilePhoto;
+      child.profilePhoto = await hydrateLocalFileRef(child.profilePhoto, { kind: 'profile-photo', childId: child.id, name: 'foto-perfil' });
+      changed ||= child.profilePhoto !== before;
+    }
+    for (const exam of child.exams || []) {
+      if (exam.file) exam.file = await hydrateLocalFileRef(exam.file, { kind: 'exam', childId: child.id, parentId: exam.id });
+    }
+    for (const item of child.medicalFiles || []) {
+      if (item.file) item.file = await hydrateLocalFileRef(item.file, { kind: 'medical-file', childId: child.id, parentId: item.id });
+    }
+    for (const memory of child.memories || []) {
+      const hydrated = [];
+      for (const asset of memory.files || []) hydrated.push(await hydrateLocalFileRef(asset, { kind: 'memory', childId: child.id, parentId: memory.id }));
+      memory.files = hydrated.filter(Boolean);
+    }
+    for (const milestone of child.milestones || []) {
+      if (milestone.photo) milestone.photo = await hydrateLocalFileRef(milestone.photo, { kind: 'milestone', childId: child.id, parentId: milestone.id, name: 'foto-evolucao' });
     }
   }
   return changed;
 }
 
-async function fileToMemoryAsset(file) {
-  const asset = await fileToDataUrl(file);
-  if (!asset) return null;
-  asset.id = uid();
-  asset.createdAt = new Date().toISOString();
-  if (asset.type && asset.type.startsWith('video/')) {
-    asset.thumbnail = await createVideoThumbnail(asset.dataUrl).catch(() => '');
+async function storeExamAttachment(file, existingId = '', extra = {}) {
+  return storeLocalFile(file, existingId, { kind: 'exam', ...extra });
+}
+
+async function getExamAttachmentBlob(fileMeta) {
+  if (!fileMeta) return null;
+  if (typeof fileMeta === 'string' && fileMeta.startsWith('data:')) return dataUrlToBlob(fileMeta);
+  if (fileMeta.dataUrl && String(fileMeta.dataUrl).startsWith('data:')) return dataUrlToBlob(fileMeta.dataUrl);
+  if (fileMeta.id) {
+    const record = await getExamAttachmentRecord(fileMeta.id).catch(() => null);
+    return record?.blob || null;
   }
-  return asset;
+  if (fileMeta.dataUrl && String(fileMeta.dataUrl).startsWith('blob:')) {
+    try { return await (await fetch(fileMeta.dataUrl)).blob(); } catch { return null; }
+  }
+  return null;
+}
+
+async function migrateLegacyExamAttachments(targetState = state) {
+  return hydrateAllLocalFiles(targetState);
+}
+
+async function deleteLocalFileRef(ref) {
+  if (ref && typeof ref === 'object' && ref.id) await deleteExamAttachmentRecord(ref.id).catch(console.warn);
+}
+
+async function deleteFilesForItem(collection, item) {
+  if (!item) return;
+  if (collection === 'medicalFiles') await deleteLocalFileRef(item.file);
+  if (collection === 'memories') {
+    for (const asset of item.files || []) await deleteLocalFileRef(asset);
+  }
+  if (collection === 'milestones') await deleteLocalFileRef(item.photo);
+}
+
+async function deleteFilesForChild(child) {
+  if (!child) return;
+  await deleteLocalFileRef(child.profilePhoto);
+  for (const exam of child.exams || []) await deleteLocalFileRef(exam.file);
+  for (const item of child.medicalFiles || []) await deleteLocalFileRef(item.file);
+  for (const memory of child.memories || []) for (const asset of memory.files || []) await deleteLocalFileRef(asset);
+  for (const milestone of child.milestones || []) await deleteLocalFileRef(milestone.photo);
+}
+
+async function fileToMemoryAsset(file, existingId = '', extra = {}) {
+  if (!file) return null;
+  let thumbnailBlob = null;
+  if ((file.type || '').startsWith('video/')) {
+    const temporaryUrl = createRuntimeObjectUrl(file);
+    const thumbnailDataUrl = await createVideoThumbnail(temporaryUrl).catch(() => '');
+    if (thumbnailDataUrl) thumbnailBlob = dataUrlToBlob(thumbnailDataUrl);
+  }
+  return storeLocalFile(file, existingId, { kind: 'memory', ...extra, thumbnailBlob });
 }
 
 function createVideoThumbnail(dataUrl) {
@@ -449,7 +562,8 @@ function renderChildSelect() {
   });
 }
 
-function setImagePreview(container, dataUrl, fallback = 'Foto') {
+function setImagePreview(container, fileRef, fallback = 'Foto') {
+  const dataUrl = fileRefUrl(fileRef);
   container.classList.toggle('placeholder', !dataUrl);
   container.innerHTML = dataUrl ? `<img src="${dataUrl}" alt="Foto da criança">` : fallback;
 }
@@ -597,7 +711,7 @@ window.replaceExamAttachment = function(examId) {
     const file = input.files?.[0];
     if (!file) return;
     const oldFile = exam.file;
-    const stored = await storeExamAttachment(file, oldFile?.id || '');
+    const stored = await storeExamAttachment(file, oldFile?.id || '', { ...(oldFile || {}), childId: currentChild().id, parentId: exam.id });
     exam.file = stored;
     saveState();
     renderAll();
@@ -644,7 +758,7 @@ function renderMedicalFiles() {
       </div>
       <small>${formatDate(item.date)}</small>
       ${item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}
-      ${item.file ? `<div class="actions inline-actions"><a class="file-pill" href="${item.file.dataUrl}" target="_blank" rel="noopener">Visualizar</a><a class="file-pill" href="${item.file.dataUrl}" download="${escapeHtml(item.file.name)}">Baixar: ${escapeHtml(item.file.name)}</a></div>` : '<small>Sem arquivo anexado</small>'}
+      ${item.file ? `<div class="actions inline-actions"><a class="file-pill" href="${fileRefUrl(item.file)}" target="_blank" rel="noopener">Visualizar</a><a class="file-pill" href="${fileRefUrl(item.file)}" download="${escapeHtml(item.file.name)}">Baixar: ${escapeHtml(item.file.name)}</a></div>` : '<small>Sem arquivo anexado</small>'}
     </div>
   `).join('') : '<p class="muted">Nenhum arquivo médico cadastrado.</p>';
 }
@@ -875,7 +989,7 @@ async function saveMemoryEdits(event) {
   const availableSlots = Math.max(0, 5 - existing.length);
   const newFiles = Array.from(form.elements.newFiles.files || []).slice(0, availableSlots);
   if (newFiles.length) {
-    const assets = (await Promise.all(newFiles.map(fileToMemoryAsset))).filter(Boolean);
+    const assets = (await Promise.all(newFiles.map(file => fileToMemoryAsset(file, '', { childId: currentChild().id, parentId: memory.id })))).filter(Boolean);
     memory.files = existing.concat(assets).slice(0, 5);
   } else {
     memory.files = existing;
@@ -905,7 +1019,7 @@ window.replaceMemoryAsset = async function(event, memoryId, assetId) {
   const assets = memoryAssets(memory);
   const index = assets.findIndex(a => a.id === assetId);
   if (index === -1) return;
-  assets[index] = await fileToMemoryAsset(file);
+  assets[index] = await fileToMemoryAsset(file, assetId, { childId: currentChild().id, parentId: memoryId });
   memory.files = assets;
   saveState();
   renderAll();
@@ -913,9 +1027,10 @@ window.replaceMemoryAsset = async function(event, memoryId, assetId) {
   showToast('Anexo substituído.');
 };
 
-window.deleteMemoryAsset = function(memoryId, assetId) {
+window.deleteMemoryAsset = async function(memoryId, assetId) {
   const memory = currentChild().memories.find(m => m.id === memoryId);
   if (!memory) return;
+  await deleteExamAttachmentRecord(assetId).catch(console.warn);
   memory.files = memoryAssets(memory).filter(a => a.id !== assetId);
   activeMemoryAssetIndex = Math.max(0, Math.min(activeMemoryAssetIndex, memory.files.length - 1));
   saveState();
@@ -1276,10 +1391,12 @@ window.editMilestone = function(id) {
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
-window.deleteMilestone = function(id) {
+window.deleteMilestone = async function(id) {
   if (!confirm('Deseja realmente excluir este registro de evolução?')) return;
   const child = currentChild();
-  child.milestones = child.milestones.filter(item => item.id !== id);
+  const item = child.milestones.find(record => record.id === id);
+  await deleteLocalFileRef(item?.photo);
+  child.milestones = child.milestones.filter(record => record.id !== id);
   saveState();
   renderAll();
   showToast('Registro de evolução excluído.');
@@ -1316,7 +1433,7 @@ function renderMilestones() {
       const percentileText = percentileLabel(percentile);
       return `
       <article class="item milestone-card">
-        ${item.photo ? `<img src="${item.photo.dataUrl}" alt="${escapeHtml(item.title || category)}">` : ''}
+        ${item.photo ? `<img src="${fileRefUrl(item.photo)}" alt="${escapeHtml(item.title || category)}">` : ''}
         <div class="item-top">
           <strong>${escapeHtml(item.title || category)}</strong>
           <div class="milestone-actions">
@@ -1332,10 +1449,12 @@ function renderMilestones() {
   `).join('');
 }
 
-window.removeItem = function(collection, id) {
+window.removeItem = async function(collection, id) {
   const child = currentChild();
   if (!Array.isArray(child[collection])) return;
-  child[collection] = child[collection].filter(item => item.id !== id);
+  const item = child[collection].find(record => record.id === id);
+  await deleteFilesForItem(collection, item);
+  child[collection] = child[collection].filter(record => record.id !== id);
   saveState();
   renderAll();
   showToast('Item excluído.');
@@ -1415,11 +1534,14 @@ function addFormListeners() {
     showToast('Nova criança criada. Preencha o cadastro.');
   });
 
-  $('deleteChildBtn').addEventListener('click', () => {
+  $('deleteChildBtn').addEventListener('click', async () => {
+    const childToDelete = currentChild();
     if (state.children.length <= 1) {
+      await deleteFilesForChild(childToDelete);
       state.children = [emptyChild()];
       state.activeChildId = state.children[0].id;
     } else if (confirm('Excluir esta criança e todos os dados vinculados?')) {
+      await deleteFilesForChild(childToDelete);
       state.children = state.children.filter(c => c.id !== state.activeChildId);
       state.activeChildId = state.children[0].id;
     } else return;
@@ -1438,8 +1560,8 @@ function addFormListeners() {
     }
     const file = form.elements.profilePhoto.files[0];
     if (file) {
-      const savedFile = await fileToDataUrl(file);
-      child.profilePhoto = savedFile.dataUrl;
+      const oldId = child.profilePhoto && typeof child.profilePhoto === 'object' ? child.profilePhoto.id : '';
+      child.profilePhoto = await storeLocalFile(file, oldId, { kind: 'profile-photo', childId: child.id, name: file.name || 'foto-perfil' });
     }
     saveState();
     renderAll();
@@ -1449,8 +1571,8 @@ function addFormListeners() {
   $('childForm').elements.profilePhoto.addEventListener('change', async event => {
     const file = event.target.files[0];
     if (!file) return;
-    const savedFile = await fileToDataUrl(file);
-    setImagePreview($('profilePreview'), savedFile.dataUrl, 'Foto');
+    const previewUrl = createRuntimeObjectUrl(file);
+    setImagePreview($('profilePreview'), previewUrl, 'Foto');
   });
 
   $('medForm').addEventListener('submit', event => {
@@ -1468,8 +1590,10 @@ function addFormListeners() {
     const form = event.currentTarget;
     const data = Object.fromEntries(new FormData(form).entries());
     const selectedFile = form.elements.arquivo.files[0];
-    const file = selectedFile ? await storeExamAttachment(selectedFile) : null;
-    currentChild().exams.push({ id: uid(), data: data.data, nome: data.nome, descricao: data.descricao, file });
+    const child = currentChild();
+    const examId = uid();
+    const file = selectedFile ? await storeExamAttachment(selectedFile, '', { childId: child.id, parentId: examId }) : null;
+    child.exams.push({ id: examId, data: data.data, nome: data.nome, descricao: data.descricao, file });
     form.reset();
     saveState();
     renderAll();
@@ -1480,8 +1604,10 @@ function addFormListeners() {
     event.preventDefault();
     const form = event.currentTarget;
     const data = Object.fromEntries(new FormData(form).entries());
-    const file = await fileToDataUrl(form.elements.file.files[0]);
-    currentChild().medicalFiles.push({ id: uid(), date: data.date, title: data.title, description: data.description, file });
+    const itemId = uid();
+    const selectedFile = form.elements.file.files[0];
+    const file = selectedFile ? await storeLocalFile(selectedFile, '', { kind: 'medical-file', childId: currentChild().id, parentId: itemId }) : null;
+    currentChild().medicalFiles.push({ id: itemId, date: data.date, title: data.title, description: data.description, file });
     form.reset();
     saveState();
     renderAll();
@@ -1527,9 +1653,11 @@ function addFormListeners() {
     const form = event.currentTarget;
     const data = Object.fromEntries(new FormData(form).entries());
     const selectedFiles = Array.from(form.elements.arquivo.files || []).slice(0, 5);
-    const files = (await Promise.all(selectedFiles.map(fileToMemoryAsset))).filter(Boolean);
-    currentChild().memories.push({
-      id: uid(), date: data.data, title: data.titulo, description: data.descricao,
+    const child = currentChild();
+    const memoryId = uid();
+    const files = (await Promise.all(selectedFiles.map(file => fileToMemoryAsset(file, '', { childId: child.id, parentId: memoryId })))).filter(Boolean);
+    child.memories.push({
+      id: memoryId, date: data.data, title: data.titulo, description: data.descricao,
       albumId: data.albumId || '', favorite: data.favorite === 'true', files
     });
     form.reset();
@@ -1592,12 +1720,14 @@ function addFormListeners() {
       unit = isWeight ? 'kg' : 'm';
       value = `${formatLocaleNumber(numericValue, 2)} ${unit}`;
     }
-    const photo = await fileToDataUrl(form.elements.photo.files[0]);
+    const selectedPhoto = form.elements.photo.files[0];
     const existingId = data.milestoneId;
     const child = currentChild();
     if (existingId) {
       const item = child.milestones.find(record => record.id === existingId);
       if (!item) return;
+      let photo = item.photo || null;
+      if (selectedPhoto) photo = await storeLocalFile(selectedPhoto, item.photo?.id || '', { kind: 'milestone', childId: child.id, parentId: item.id, name: selectedPhoto.name || 'foto-evolucao' });
       Object.assign(item, {
         category,
         date: data.date,
@@ -1606,11 +1736,13 @@ function addFormListeners() {
         numericValue,
         unit,
         description: data.description,
-        photo: photo || item.photo || null
+        photo
       });
       showToast('Registro de evolução atualizado.');
     } else {
-      child.milestones.push({ id: uid(), category, date: data.date, title: isGrowth ? '' : data.title, value, numericValue, unit, description: data.description, photo });
+      const milestoneId = uid();
+      const photo = selectedPhoto ? await storeLocalFile(selectedPhoto, '', { kind: 'milestone', childId: child.id, parentId: milestoneId, name: selectedPhoto.name || 'foto-evolucao' }) : null;
+      child.milestones.push({ id: milestoneId, category, date: data.date, title: isGrowth ? '' : data.title, value, numericValue, unit, description: data.description, photo });
       showToast('Registro de evolução salvo.');
     }
     resetMilestoneForm();
@@ -1687,26 +1819,69 @@ function safeFileName(value = 'arquivo') {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'arquivo';
 }
 
-async function exportBackup() {
-  const exportState = JSON.parse(JSON.stringify(state));
-  for (const child of exportState.children || []) {
-    for (const exam of child.exams || []) {
-      if (!exam.file) continue;
-      const originalExam = state.children.find(item => item.id === child.id)?.exams.find(item => item.id === exam.id);
-      const blob = await getExamAttachmentBlob(originalExam?.file || exam.file);
-      if (blob) {
-        exam.file = {
-          ...exam.file,
-          name: exam.file.name || 'arquivo',
-          type: exam.file.type || blob.type || 'application/octet-stream',
-          size: Number(exam.file.size || blob.size || 0),
-          dataUrl: await blobToDataUrl(blob),
-          storage: 'backup-base64'
-        };
-      }
+async function fileRefForBackup(ref, fallbackName = 'arquivo') {
+  if (!ref) return ref;
+  if (typeof ref === 'string') {
+    if (!ref.startsWith('data:')) return ref;
+    const blob = dataUrlToBlob(ref);
+    return {
+      id: uid(),
+      name: fallbackName,
+      type: blob.type || 'application/octet-stream',
+      size: blob.size,
+      dataUrl: ref,
+      storage: 'backup-base64'
+    };
+  }
+  let blob = null;
+  let thumbnailBlob = null;
+  if (ref.id) {
+    const record = await getExamAttachmentRecord(ref.id).catch(() => null);
+    blob = record?.blob || null;
+    thumbnailBlob = record?.thumbnailBlob || null;
+  }
+  if (!blob && ref.dataUrl) {
+    if (String(ref.dataUrl).startsWith('data:')) blob = dataUrlToBlob(ref.dataUrl);
+    else if (String(ref.dataUrl).startsWith('blob:')) {
+      try { blob = await (await fetch(ref.dataUrl)).blob(); } catch {}
     }
   }
-  const content = JSON.stringify({ exportedAt: new Date().toISOString(), app: 'cReScer juntos', version: 4, state: exportState }, null, 2);
+  if (!blob) return prepareStateForLocalStorage(ref);
+  const backupRef = {
+    ...prepareStateForLocalStorage(ref),
+    name: ref.name || fallbackName,
+    type: ref.type || blob.type || 'application/octet-stream',
+    size: Number(ref.size || blob.size || 0),
+    dataUrl: await blobToDataUrl(blob),
+    storage: 'backup-base64'
+  };
+  if (thumbnailBlob) backupRef.thumbnail = await blobToDataUrl(thumbnailBlob);
+  return backupRef;
+}
+
+async function exportBackup() {
+  const exportState = prepareStateForLocalStorage(state);
+  for (let childIndex = 0; childIndex < (state.children || []).length; childIndex += 1) {
+    const originalChild = state.children[childIndex];
+    const backupChild = exportState.children[childIndex];
+    backupChild.profilePhoto = await fileRefForBackup(originalChild.profilePhoto, 'foto-perfil');
+    for (let index = 0; index < (originalChild.exams || []).length; index += 1) {
+      backupChild.exams[index].file = await fileRefForBackup(originalChild.exams[index].file, 'arquivo-exame');
+    }
+    for (let index = 0; index < (originalChild.medicalFiles || []).length; index += 1) {
+      backupChild.medicalFiles[index].file = await fileRefForBackup(originalChild.medicalFiles[index].file, 'arquivo-medico');
+    }
+    for (let memoryIndex = 0; memoryIndex < (originalChild.memories || []).length; memoryIndex += 1) {
+      const originalMemory = originalChild.memories[memoryIndex];
+      const backupMemory = backupChild.memories[memoryIndex];
+      backupMemory.files = [];
+      for (const asset of originalMemory.files || []) backupMemory.files.push(await fileRefForBackup(asset, asset.name || 'anexo-memoria'));
+    }
+    for (let index = 0; index < (originalChild.milestones || []).length; index += 1) {
+      backupChild.milestones[index].photo = await fileRefForBackup(originalChild.milestones[index].photo, 'foto-evolucao');
+    }
+  }
+  const content = JSON.stringify({ exportedAt: new Date().toISOString(), app: 'cReScer juntos', version: 5, state: exportState }, null, 2);
   downloadText(`backup-crescer-juntos-${new Date().toISOString().slice(0,10)}.json`, content, 'application/json');
   showToast('Backup exportado com os anexos dos exames.');
 }
@@ -1719,7 +1894,7 @@ async function importBackup(event) {
     const parsed = JSON.parse(text);
     const importedState = parsed.state || parsed;
     if (!importedState.children || !Array.isArray(importedState.children)) throw new Error('Formato inválido');
-    await migrateLegacyExamAttachments(importedState);
+    await hydrateAllLocalFiles(importedState);
     state = importedState;
     if (!state.activeChildId && state.children[0]) state.activeChildId = state.children[0].id;
     saveState();
@@ -1746,7 +1921,7 @@ let appLogoCache = null;
 async function getAppLogoDataUrl() {
   if (appLogoCache) return appLogoCache;
   try {
-    const response = await fetch('icons/logo-main.png');
+    const response = await fetch('./icons/logo-main.png');
     const blob = await response.blob();
     appLogoCache = await new Promise(resolve => {
       const reader = new FileReader();
@@ -1893,7 +2068,7 @@ async function generateSelectedChildPdf() {
   doc.setDrawColor(222, 234, 248);
   doc.roundedRect(14, cardTop, 182, 48, 6, 6, 'FD');
   if (child.profilePhoto) {
-    await addImageSafeForPdf(doc, child.profilePhoto, 18, 48, 40, 40);
+    await addImageSafeForPdf(doc, fileRefUrl(child.profilePhoto), 18, 48, 40, 40);
   } else {
     doc.setFillColor(234, 242, 255);
     doc.roundedRect(18, 48, 40, 40, 4, 4, 'F');
@@ -2021,7 +2196,7 @@ async function generateMemoryAlbumPdf() {
 
   let coverData = '';
   const coverSource = $('memoryPdfCoverSource').value;
-  if (coverSource === 'profile') coverData = child.profilePhoto;
+  if (coverSource === 'profile') coverData = fileRefUrl(child.profilePhoto);
   if (coverSource === 'first') coverData = photoEntries[0].asset.dataUrl;
   if (coverSource === 'upload') {
     const file = $('memoryPdfCoverUpload').files[0];
@@ -2065,7 +2240,7 @@ async function generateEvolutionPdf() {
   if (!child.milestones.length) return showToast('Nenhum registro em Marcos & Evolução.');
   let y = await addPdfHeader(doc, 'Evolução e Marcos', childDisplayName(child));
   if (child.profilePhoto) {
-    await addImageSafeForPdf(doc, child.profilePhoto, 156, 42, 38, 38);
+    await addImageSafeForPdf(doc, fileRefUrl(child.profilePhoto), 156, 42, 38, 38);
   }
   const grouped = child.milestones.reduce((acc, m) => ((acc[m.category] ||= []).push(m), acc), {});
   Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).forEach(([category, items]) => {
@@ -2076,7 +2251,7 @@ async function generateEvolutionPdf() {
       y = addParagraph(doc, `• ${formatDate(item.date)} - ${item.title || category}${item.value ? ': ' + item.value : ''}${pct ? ' — Percentil ' + pct : ''}. ${item.description || ''}`, y);
       if (item.photo) {
         y = ensurePage(doc, y, 42);
-        addImageSafe(doc, item.photo.dataUrl, 20, y, 52, 36);
+        addImageSafe(doc, fileRefUrl(item.photo), 20, y, 52, 36);
         y += 42;
       }
     });
@@ -2149,8 +2324,9 @@ async function init() {
   registerServiceWorker();
   initTabs();
   addFormListeners();
-  const migrated = await migrateLegacyExamAttachments(state);
-  if (migrated) saveState();
+  if (navigator.storage?.persist) navigator.storage.persist().catch(() => false);
+  await hydrateAllLocalFiles(state);
+  saveState();
   renderAll();
 }
 

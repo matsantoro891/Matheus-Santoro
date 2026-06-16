@@ -28,3 +28,18 @@ Os anexos de Saúde > Exames agora são armazenados permanentemente em IndexedDB
 - Peso em kg e altura em metros.
 - Gráficos de peso/idade e altura/idade com curvas e percentis OMS por sexo e idade.
 - Edição e exclusão confirmada dos registros.
+
+
+## Atualização v13
+- Home usa exclusivamente `icons/logo-main.png` como logo visual.
+- Ícones `icon-192.png` e `icon-512.png` permanecem exclusivos para instalação/PWA.
+- Logo da Home centralizado, inteiro e com `object-fit: contain`.
+
+
+## Atualização v14 — persistência local completa
+
+- Fotos de perfil, anexos de Exames, Arquivos Médicos, fotos/vídeos/documentos das Memórias e fotos de Marcos & Evolução são armazenados como Blob no IndexedDB.
+- O localStorage guarda apenas os dados textuais e metadados leves.
+- Ao iniciar o PWA, os arquivos são recuperados do IndexedDB e as URLs temporárias de visualização são recriadas.
+- Backups incluem todos os arquivos em Base64 e a restauração devolve os conteúdos ao IndexedDB.
+- O aplicativo solicita armazenamento persistente ao navegador quando o recurso está disponível.

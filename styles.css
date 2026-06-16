@@ -639,10 +639,17 @@ body[data-theme="adolescente-menina"] {
   color: white;
 }
 .hero-logo {
-  width: 92px;
-  height: 92px;
-  border-radius: 24px;
-  box-shadow: 0 18px 30px rgba(0,0,0,0.18);
+  display: block;
+  width: min(170px, 42vw);
+  height: 118px;
+  max-width: 100%;
+  object-fit: contain;
+  object-position: center;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  font-size: 0;
+  color: transparent;
 }
 .hero-branding h2 {
   margin: 10px 0 4px;
@@ -856,7 +863,7 @@ body[data-theme="adolescente-menina"] {
 @media (max-width: 520px) {
   .home-hero { padding: 14px 16px 26px; min-height: 222px; border-radius: 0 0 28px 28px; }
   .hero-circle-btn { width: 44px; height: 44px; }
-  .hero-logo { width: 76px; height: 76px; border-radius: 20px; }
+  .hero-logo { width: min(150px, 44vw); height: 104px; object-fit: contain; object-position: center; border-radius: 0; box-shadow: none; }
   .cloud-left { top: 86px; opacity: 0.66; }
   .cloud-right { top: 90px; opacity: 0.62; }
   .hero-branding h2 { font-size: 2.1rem; }
