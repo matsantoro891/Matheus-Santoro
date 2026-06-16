@@ -467,10 +467,20 @@ button, .import-label {
 }
 .memory-carousel-stage img,
 .memory-carousel-stage video {
-  width: 100%;
-  max-height: 62vh;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: min(62vh, 520px);
   object-fit: contain;
   display: block;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.memory-stage-loading {
+  color: #ffffff;
+  text-align: center;
+  padding: 30px;
+  font-weight: 800;
 }
 .empty-stage, .document-stage {
   color: #ffffff;
@@ -640,8 +650,8 @@ body[data-theme="adolescente-menina"] {
 }
 .hero-logo {
   display: block;
-  width: min(170px, 42vw);
-  height: 118px;
+  width: min(119px, 29.4vw);
+  height: 83px;
   max-width: 100%;
   object-fit: contain;
   object-position: center;
@@ -863,7 +873,7 @@ body[data-theme="adolescente-menina"] {
 @media (max-width: 520px) {
   .home-hero { padding: 14px 16px 26px; min-height: 222px; border-radius: 0 0 28px 28px; }
   .hero-circle-btn { width: 44px; height: 44px; }
-  .hero-logo { width: min(150px, 44vw); height: 104px; object-fit: contain; object-position: center; border-radius: 0; box-shadow: none; }
+  .hero-logo { width: min(105px, 30.8vw); height: 73px; object-fit: contain; object-position: center; border-radius: 0; box-shadow: none; }
   .cloud-left { top: 86px; opacity: 0.66; }
   .cloud-right { top: 90px; opacity: 0.62; }
   .hero-branding h2 { font-size: 2.1rem; }

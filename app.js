@@ -16,6 +16,8 @@ let memoryView = 'grid';
 let activeAlbumFilter = 'all';
 let toastTimer = null;
 const runtimeObjectUrls = new Set();
+const memoryAssetDisplayUrlCache = new Map();
+let memoryViewerRenderToken = 0;
 
 function uid() {
   return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
@@ -258,6 +260,98 @@ function createRuntimeObjectUrl(blob) {
 function revokeRuntimeObjectUrls() {
   runtimeObjectUrls.forEach(url => URL.revokeObjectURL(url));
   runtimeObjectUrls.clear();
+  memoryAssetDisplayUrlCache.clear();
+}
+
+async function resolveMemoryAssetDisplayUrl(asset) {
+  if (!asset) return '';
+  const cacheKey = asset.id || `${asset.name || 'anexo'}-${asset.size || 0}`;
+  if (memoryAssetDisplayUrlCache.has(cacheKey)) return memoryAssetDisplayUrlCache.get(cacheKey);
+
+  if (asset.dataUrl && String(asset.dataUrl).startsWith('data:')) {
+    memoryAssetDisplayUrlCache.set(cacheKey, asset.dataUrl);
+    return asset.dataUrl;
+  }
+
+  const blob = await getExamAttachmentBlob(asset);
+  if (blob) {
+    const dataUrl = await blobToDataUrl(blob);
+    memoryAssetDisplayUrlCache.set(cacheKey, dataUrl);
+    return dataUrl;
+  }
+
+  if (asset.dataUrl && String(asset.dataUrl).startsWith('blob:')) {
+    try {
+      const fetchedBlob = await (await fetch(asset.dataUrl)).blob();
+      const dataUrl = await blobToDataUrl(fetchedBlob);
+      memoryAssetDisplayUrlCache.set(cacheKey, dataUrl);
+      return dataUrl;
+    } catch {
+      return '';
+    }
+  }
+
+  return asset.dataUrl || '';
+}
+
+async function resolveMemoryAssetMediaUrl(asset) {
+  if (!asset) return { url: '', poster: '' };
+  if (isImage(asset)) {
+    return { url: await resolveMemoryAssetDisplayUrl(asset), poster: '' };
+  }
+  const cacheKey = `${asset.id || asset.name || 'video'}-media`;
+  if (memoryAssetDisplayUrlCache.has(cacheKey)) {
+    const cached = memoryAssetDisplayUrlCache.get(cacheKey);
+    return typeof cached === 'object' ? cached : { url: cached, poster: asset.thumbnail || '' };
+  }
+  const blob = await getExamAttachmentBlob(asset);
+  if (blob) {
+    const url = createRuntimeObjectUrl(blob);
+    const result = { url, poster: asset.thumbnail || '' };
+    memoryAssetDisplayUrlCache.set(cacheKey, result);
+    return result;
+  }
+  if (asset.dataUrl) {
+    const result = { url: asset.dataUrl, poster: asset.thumbnail || '' };
+    memoryAssetDisplayUrlCache.set(cacheKey, result);
+    return result;
+  }
+  return { url: '', poster: '' };
+}
+
+function waitForMediaLoad(element) {
+  return new Promise((resolve, reject) => {
+    if (element.tagName === 'IMG') {
+      if (element.complete && element.naturalWidth > 0) return resolve();
+      element.addEventListener('load', () => resolve(), { once: true });
+      element.addEventListener('error', () => reject(new Error('Falha ao carregar imagem.')), { once: true });
+      return;
+    }
+    if (element.tagName === 'VIDEO') {
+      if (element.readyState >= 2) return resolve();
+      element.addEventListener('loadeddata', () => resolve(), { once: true });
+      element.addEventListener('error', () => reject(new Error('Falha ao carregar vídeo.')), { once: true });
+      return;
+    }
+    resolve();
+  });
+}
+
+function setMemoryCarouselLoading(stage, message = 'Carregando...') {
+  stage.replaceChildren();
+  const loading = document.createElement('div');
+  loading.className = 'memory-stage-loading';
+  loading.setAttribute('aria-live', 'polite');
+  loading.textContent = message;
+  stage.appendChild(loading);
+}
+
+function setMemoryCarouselError(stage, message = 'Não foi possível carregar a imagem.') {
+  stage.replaceChildren();
+  const error = document.createElement('div');
+  error.className = 'empty-stage';
+  error.textContent = message;
+  stage.appendChild(error);
 }
 
 function fileRefUrl(ref) {
@@ -376,7 +470,22 @@ async function hydrateLocalFileRef(ref, context = {}) {
       thumbnailDataUrl: ref.thumbnail || ''
     });
   }
-  if (ref.dataUrl && String(ref.dataUrl).startsWith('blob:')) return ref;
+  if (ref.dataUrl && String(ref.dataUrl).startsWith('blob:')) {
+    if (ref.storage === 'indexeddb' && ref.id) {
+      const record = await getExamAttachmentRecord(ref.id).catch(() => null);
+      if (record?.blob) {
+        return {
+          ...ref,
+          name: ref.name || record.name || 'arquivo',
+          type: ref.type || record.type || record.blob.type || 'application/octet-stream',
+          size: Number(ref.size || record.size || record.blob.size || 0),
+          dataUrl: createRuntimeObjectUrl(record.blob),
+          thumbnail: record.thumbnailBlob ? createRuntimeObjectUrl(record.thumbnailBlob) : ''
+        };
+      }
+    }
+    return { ...ref, dataUrl: '', thumbnail: '' };
+  }
   return ref;
 }
 
@@ -899,7 +1008,7 @@ function fillMemoryEditAlbumSelect(selectedAlbumId = '') {
   select.value = selectedAlbumId || '';
 }
 
-window.openMemoryViewer = function(memoryId, index = 0) {
+window.openMemoryViewer = async function(memoryId, index = 0) {
   const memory = currentChild().memories.find(m => m.id === memoryId);
   if (!memory) return;
   activeMemoryViewerId = memoryId;
@@ -912,27 +1021,97 @@ window.openMemoryViewer = function(memoryId, index = 0) {
   form.elements.description.value = memory.description || '';
   form.elements.favorite.value = String(!!memory.favorite);
   form.elements.albumId.value = memory.albumId || '';
-  renderMemoryViewer();
+  const stage = $('memoryCarouselStage');
+  setMemoryCarouselLoading(stage);
+  $('memoryAssetCounter').textContent = memoryAssets(memory).length ? `${activeMemoryAssetIndex + 1} de ${memoryAssets(memory).length}` : '0 de 0';
   $('memoryViewerModal').classList.remove('hidden');
+  await renderMemoryViewer();
 };
 
-function renderMemoryViewer() {
+async function renderMemoryViewer() {
   const memory = currentChild().memories.find(m => m.id === activeMemoryViewerId);
   if (!memory) return;
   const assets = memoryAssets(memory);
   const asset = assets[activeMemoryAssetIndex];
   const stage = $('memoryCarouselStage');
-  if (!asset) {
-    stage.innerHTML = '<div class="empty-stage">Sem anexos nesta memória.</div>';
-  } else if (isImage(asset)) {
-    stage.innerHTML = `<img src="${asset.dataUrl}" alt="${escapeHtml(asset.name || 'Foto da memória')}">`;
-  } else if (isVideo(asset)) {
-    stage.innerHTML = `<video src="${asset.dataUrl}" controls playsinline poster="${asset.thumbnail || ''}"></video>`;
-  } else {
-    stage.innerHTML = `<div class="document-stage"><strong>${escapeHtml(getAssetIcon(asset))}</strong><p>${escapeHtml(asset.name || 'Arquivo')}</p><a class="file-pill" href="${asset.dataUrl}" target="_blank" rel="noopener">Visualizar arquivo</a></div>`;
-  }
+  const renderToken = ++memoryViewerRenderToken;
+
   $('memoryAssetCounter').textContent = assets.length ? `${activeMemoryAssetIndex + 1} de ${assets.length}` : '0 de 0';
   renderMemoryAttachmentList(memory);
+
+  if (!asset) {
+    setMemoryCarouselError(stage, 'Sem anexos nesta memória.');
+    return;
+  }
+
+  setMemoryCarouselLoading(stage);
+
+  if (isImage(asset)) {
+    const url = await resolveMemoryAssetDisplayUrl(asset);
+    if (renderToken !== memoryViewerRenderToken) return;
+    if (!url) {
+      setMemoryCarouselError(stage, 'Não foi possível recuperar a imagem salva. Tente reabrir a memória.');
+      return;
+    }
+    const img = document.createElement('img');
+    img.alt = asset.name || 'Foto da memória';
+    img.decoding = 'async';
+    img.src = url;
+    try {
+      await waitForMediaLoad(img);
+      if (renderToken !== memoryViewerRenderToken) return;
+      stage.replaceChildren(img);
+    } catch {
+      if (renderToken !== memoryViewerRenderToken) return;
+      setMemoryCarouselError(stage, 'Não foi possível carregar a imagem.');
+    }
+    return;
+  }
+
+  if (isVideo(asset)) {
+    const { url, poster } = await resolveMemoryAssetMediaUrl(asset);
+    if (renderToken !== memoryViewerRenderToken) return;
+    if (!url) {
+      setMemoryCarouselError(stage, 'Não foi possível recuperar o vídeo salvo.');
+      return;
+    }
+    const video = document.createElement('video');
+    video.controls = true;
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    if (poster) video.poster = poster;
+    video.src = url;
+    try {
+      await waitForMediaLoad(video);
+      if (renderToken !== memoryViewerRenderToken) return;
+      stage.replaceChildren(video);
+    } catch {
+      if (renderToken !== memoryViewerRenderToken) return;
+      setMemoryCarouselError(stage, 'Não foi possível carregar o vídeo.');
+    }
+    return;
+  }
+
+  const docUrl = await resolveMemoryAssetDisplayUrl(asset);
+  if (renderToken !== memoryViewerRenderToken) return;
+  stage.replaceChildren();
+  const wrapper = document.createElement('div');
+  wrapper.className = 'document-stage';
+  wrapper.innerHTML = `<strong>${escapeHtml(getAssetIcon(asset))}</strong><p>${escapeHtml(asset.name || 'Arquivo')}</p>`;
+  if (docUrl) {
+    const link = document.createElement('a');
+    link.className = 'file-pill';
+    link.href = docUrl;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = 'Visualizar arquivo';
+    wrapper.appendChild(link);
+  } else {
+    const msg = document.createElement('p');
+    msg.textContent = 'Arquivo indisponível no momento.';
+    wrapper.appendChild(msg);
+  }
+  stage.appendChild(wrapper);
 }
 
 function renderMemoryAttachmentList(memory) {
@@ -969,8 +1148,9 @@ function moveMemoryAsset(delta) {
 }
 
 function closeMemoryViewer() {
+  memoryViewerRenderToken += 1;
   $('memoryViewerModal').classList.add('hidden');
-  $('memoryCarouselStage').innerHTML = '';
+  $('memoryCarouselStage').replaceChildren();
   activeMemoryViewerId = '';
   activeMemoryAssetIndex = 0;
 }
