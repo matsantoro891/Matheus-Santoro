@@ -1020,6 +1020,7 @@ body[data-theme-mode="decorativo"] .home-hero::after {
   gap: 12px;
   margin-top: 12px;
 }
+.manual-theme-fields.hidden { display: none !important; }
 .theme-preview-wrap {
   border: 1px solid var(--line);
   border-radius: 18px;

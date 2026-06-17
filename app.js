@@ -13,6 +13,22 @@ const THEME_STAGE_LABELS = {
   adolescencia: 'Adolescência'
 };
 const THEME_GENDER_LABELS = { masculino: 'Masculino', feminino: 'Feminino' };
+const THEME_IMAGES = {
+  masculino: {
+    bebe: 'themes/masculino/bebe.png',
+    primeiraInfancia: 'themes/masculino/primeira-infancia.png',
+    infancia: 'themes/masculino/infancia.png',
+    preAdolescencia: 'themes/masculino/pre-adolescencia.png',
+    adolescencia: 'themes/masculino/adolescencia.png'
+  },
+  feminino: {
+    bebe: 'themes/feminino/bebe.png',
+    primeiraInfancia: 'themes/feminino/primeira-infancia.png',
+    infancia: 'themes/feminino/infancia.png',
+    preAdolescencia: 'themes/feminino/pre-adolescencia.png',
+    adolescencia: 'themes/feminino/adolescencia.png'
+  }
+};
 const GROWTH_PERCENTILES = [
   { label: 'P3', z: -1.880793608 },
   { label: 'P15', z: -1.036433389 },
@@ -25,6 +41,7 @@ let state = loadState();
 let memoryView = 'grid';
 let activeAlbumFilter = 'all';
 let toastTimer = null;
+let themeLoadToken = 0;
 const runtimeObjectUrls = new Set();
 
 function uid() {
@@ -163,15 +180,25 @@ function themeStageByAge(dateString) {
 }
 
 function themeGenderFromChild(child) {
-  const sex = String(child.sexo || '').toLowerCase();
-  if (sex.includes('mascul')) return 'masculino';
-  if (sex.includes('femin')) return 'feminino';
+  const sex = String(child.sexo || '').trim().toLowerCase();
+  if (['m', 'male', 'masculino'].includes(sex) || sex.includes('mascul')) return 'masculino';
+  if (['f', 'female', 'feminino'].includes(sex) || sex.includes('femin')) return 'feminino';
   return null;
+}
+
+function themeStageImageKey(stage) {
+  return {
+    bebe: 'bebe',
+    'primeira-infancia': 'primeiraInfancia',
+    infancia: 'infancia',
+    'pre-adolescencia': 'preAdolescencia',
+    adolescencia: 'adolescencia'
+  }[stage] || '';
 }
 
 function themeImagePath(gender, stage) {
   if (!THEME_GENDERS.includes(gender) || !THEME_STAGES.includes(stage)) return '';
-  return `./themes/${gender}/${stage}.png`;
+  return THEME_IMAGES[gender]?.[themeStageImageKey(stage)] || '';
 }
 
 function effectiveTheme() {
@@ -203,26 +230,35 @@ function effectiveTheme() {
 function applyTheme() {
   const child = currentChild();
   const theme = effectiveTheme();
+  const token = ++themeLoadToken;
   document.body.dataset.theme = 'padrao';
-  document.body.dataset.themeMode = theme.image ? 'decorativo' : 'padrao';
+  document.body.dataset.themeMode = 'padrao';
   const heroArt = $('themeHeroArt');
   if (heroArt) {
-    heroArt.classList.toggle('hidden', !theme.image);
-    if (theme.image) heroArt.src = theme.image;
-    else heroArt.removeAttribute('src');
+    heroArt.classList.add('hidden');
+    heroArt.removeAttribute('src');
+    if (theme.image) {
+      const image = new Image();
+      image.onload = () => {
+        if (token !== themeLoadToken) return;
+        heroArt.src = theme.image;
+        heroArt.classList.remove('hidden');
+        document.body.dataset.themeMode = 'decorativo';
+      };
+      image.onerror = () => {
+        if (token !== themeLoadToken) return;
+        console.warn(`Tema não carregado: ${theme.image}`);
+      };
+      image.src = theme.image;
+    }
   }
   const hint = $('themeHint');
   if (hint) hint.textContent = theme.reason;
   ['themeModeSelect', 'themeModeSelectMenu'].forEach(id => { if ($(id)) $(id).value = child.themeMode || 'auto'; });
-  if ($('themeStageSelect')) $('themeStageSelect').value = child.themeStage || 'bebe';
-  if ($('themeGenderSelect')) $('themeGenderSelect').value = child.themeGender || 'masculino';
-  const manualFields = $('manualThemeFields');
-  if (manualFields) manualFields.classList.toggle('hidden', child.themeMode !== 'manual');
-  const preview = $('themePreview');
-  if (preview) {
-    const previewSrc = themeImagePath(child.themeGender || 'masculino', child.themeStage || 'bebe');
-    preview.src = previewSrc;
-  }
+  ['themeStageSelect', 'themeStageSelectMenu'].forEach(id => { if ($(id)) $(id).value = child.themeStage || 'bebe'; });
+  ['themeGenderSelect', 'themeGenderSelectMenu'].forEach(id => { if ($(id)) $(id).value = child.themeGender || 'masculino'; });
+  ['manualThemeControls', 'manualThemeControlsMenu'].forEach(id => { if ($(id)) $(id).classList.toggle('hidden', child.themeMode !== 'manual'); });
+  updateManualThemePreview();
 }
 
 function setThemeMode(value) {
@@ -232,17 +268,23 @@ function setThemeMode(value) {
   applyTheme();
 }
 
-function updateManualThemePreview() {
-  const stage = $('themeStageSelect')?.value || 'bebe';
-  const gender = $('themeGenderSelect')?.value || 'masculino';
-  const preview = $('themePreview');
-  if (preview) preview.src = themeImagePath(gender, stage);
+function updateManualThemePreview(source = 'main') {
+  const suffix = source === 'menu' ? 'Menu' : '';
+  const stage = $(`themeStageSelect${suffix}`)?.value || currentChild().themeStage || 'bebe';
+  const gender = $(`themeGenderSelect${suffix}`)?.value || currentChild().themeGender || 'masculino';
+  const preview = $(`themePreview${suffix}`);
+  if (preview) {
+    const src = themeImagePath(gender, stage);
+    preview.src = src;
+    preview.onerror = () => console.warn(`Prévia de tema não carregada: ${src}`);
+  }
 }
 
-function applyManualThemeSelection() {
+function applyManualThemeSelection(source = 'main') {
   const child = currentChild();
-  const stage = $('themeStageSelect')?.value || child.themeStage || 'bebe';
-  const gender = $('themeGenderSelect')?.value || child.themeGender || 'masculino';
+  const suffix = source === 'menu' ? 'Menu' : '';
+  const stage = $(`themeStageSelect${suffix}`)?.value || child.themeStage || 'bebe';
+  const gender = $(`themeGenderSelect${suffix}`)?.value || child.themeGender || 'masculino';
   if (THEME_STAGES.includes(stage)) child.themeStage = stage;
   if (THEME_GENDERS.includes(gender)) child.themeGender = gender;
   child.themeMode = 'manual';
@@ -1901,9 +1943,12 @@ function addFormListeners() {
   $('drawerOpenBackup')?.addEventListener('click', () => { switchTab('inicio', { closeMenu: true }); document.querySelector('.backup-social-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
 
   ['themeModeSelect','themeModeSelectMenu'].forEach(id => { if ($(id)) $(id).addEventListener('change', e => setThemeMode(e.target.value)); });
-  $('themeStageSelect')?.addEventListener('change', updateManualThemePreview);
-  $('themeGenderSelect')?.addEventListener('change', updateManualThemePreview);
-  $('applyManualThemeBtn')?.addEventListener('click', applyManualThemeSelection);
+  $('themeStageSelect')?.addEventListener('change', () => updateManualThemePreview('main'));
+  $('themeGenderSelect')?.addEventListener('change', () => updateManualThemePreview('main'));
+  $('applyManualThemeBtn')?.addEventListener('click', () => applyManualThemeSelection('main'));
+  $('themeStageSelectMenu')?.addEventListener('change', () => updateManualThemePreview('menu'));
+  $('themeGenderSelectMenu')?.addEventListener('change', () => updateManualThemePreview('menu'));
+  $('applyManualThemeBtnMenu')?.addEventListener('click', () => applyManualThemeSelection('menu'));
 
   $('newChildBtn').addEventListener('click', () => {
     const child = emptyChild();

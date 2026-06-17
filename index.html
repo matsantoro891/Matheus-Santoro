@@ -11,11 +11,11 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/favicon.png" />
-  <link rel="stylesheet" href="styles.css?v=27" />
+  <link rel="stylesheet" href="styles.css?v=28" />
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script defer src="growth-reference.js"></script>
-  <script defer src="app.js?v=27"></script>
+  <script defer src="app.js?v=28"></script>
 </head>
 <body>
   <header class="app-header">
@@ -416,7 +416,7 @@
             <option value="manual">Escolher manualmente</option>
             <option value="default">Padrão atual</option>
           </select></label>
-          <div id="manualThemeFields" class="manual-theme-fields hidden">
+          <div id="manualThemeControls" class="manual-theme-fields hidden">
             <label>Fase<select id="themeStageSelect">
               <option value="bebe">Bebê</option>
               <option value="primeira-infancia">Primeira infância</option>
@@ -424,7 +424,7 @@
               <option value="pre-adolescencia">Pré-adolescência</option>
               <option value="adolescencia">Adolescência</option>
             </select></label>
-            <label>Estilo do tema<select id="themeGenderSelect">
+            <label>Estilo<select id="themeGenderSelect">
               <option value="masculino">Masculino</option>
               <option value="feminino">Feminino</option>
             </select></label>
@@ -483,6 +483,25 @@
           <option value="manual">Escolher manualmente</option>
           <option value="default">Padrão atual</option>
         </select></label>
+        <div id="manualThemeControlsMenu" class="manual-theme-fields hidden">
+          <label>Fase<select id="themeStageSelectMenu">
+            <option value="bebe">Bebê</option>
+            <option value="primeira-infancia">Primeira infância</option>
+            <option value="infancia">Infância</option>
+            <option value="pre-adolescencia">Pré-adolescência</option>
+            <option value="adolescencia">Adolescência</option>
+          </select></label>
+          <label>Estilo<select id="themeGenderSelectMenu">
+            <option value="masculino">Masculino</option>
+            <option value="feminino">Feminino</option>
+          </select></label>
+          <div class="theme-preview-wrap">
+            <img id="themePreviewMenu" class="theme-preview" alt="Prévia do tema selecionado" />
+          </div>
+          <div class="actions">
+            <button type="button" id="applyManualThemeBtnMenu" class="primary">Aplicar tema</button>
+          </div>
+        </div>
       </div>
       <div class="side-menu-group">
         <h4>Crianças cadastradas</h4>
