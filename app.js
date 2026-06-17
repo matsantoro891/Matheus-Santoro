@@ -3,6 +3,16 @@ const EXAM_DB_NAME = 'crescer-juntos-exam-files';
 const EXAM_DB_VERSION = 1;
 const EXAM_STORE_NAME = 'attachments';
 const DEFAULT_CATEGORIES = ['Peso', 'Altura', 'Desenvolvimento motor', 'Categoria personalizada'];
+const THEME_STAGES = ['bebe', 'primeira-infancia', 'infancia', 'pre-adolescencia', 'adolescencia'];
+const THEME_GENDERS = ['masculino', 'feminino'];
+const THEME_STAGE_LABELS = {
+  bebe: 'Bebê',
+  'primeira-infancia': 'Primeira infância',
+  infancia: 'Infância',
+  'pre-adolescencia': 'Pré-adolescência',
+  adolescencia: 'Adolescência'
+};
+const THEME_GENDER_LABELS = { masculino: 'Masculino', feminino: 'Feminino' };
 const GROWTH_PERCENTILES = [
   { label: 'P3', z: -1.880793608 },
   { label: 'P15', z: -1.036433389 },
@@ -28,6 +38,7 @@ function emptyChild() {
     problemas: '', alergias: '', mae: '', telefoneMae: '', pai: '', telefonePai: '',
     emergenciaNome: '', emergenciaTelefone: '', pediatraNome: '', pediatraTelefone: '', pediatraEmail: '', clinicaPediatra: '',
     observacoes: '', miniBio: '', profilePhoto: '',
+    themeMode: 'auto', themeGender: 'masculino', themeStage: 'bebe',
     medications: [], exams: [], medicalFiles: [], memories: [], albums: [], events: [], milestones: []
   };
 }
@@ -85,6 +96,9 @@ function normalizeChild(child) {
   child.milestones ||= [];
   child.profilePhoto ||= '';
   child.miniBio ||= '';
+  if (!['auto', 'manual', 'default'].includes(child.themeMode)) child.themeMode = 'auto';
+  if (!THEME_GENDERS.includes(child.themeGender)) child.themeGender = 'masculino';
+  if (!THEME_STAGES.includes(child.themeStage)) child.themeStage = 'bebe';
   child.memories.forEach(memory => {
     if (!Array.isArray(memory.files)) memory.files = memory.file ? [memory.file] : [];
     memory.files = memory.files.filter(Boolean).slice(0, 5).map((asset, index) => ({
@@ -127,44 +141,111 @@ function calculateAgeText(dateString) {
   return parts.slice(0, 3).join(', ');
 }
 
-function suggestThemeByAge(dateString) {
-  if (!dateString) return 'bebe-neutro';
+function ageYearsFromBirth(dateString) {
+  if (!dateString) return null;
   const birth = new Date(dateString + 'T12:00:00');
-  if (Number.isNaN(birth.getTime())) return 'bebe-neutro';
+  if (Number.isNaN(birth.getTime())) return null;
   const now = new Date();
   let years = now.getFullYear() - birth.getFullYear();
   if (now.getMonth() < birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate())) years -= 1;
-  if (years <= 2) return 'bebe-neutro';
-  if (years <= 8) return 'infantil-menino';
-  if (years <= 12) return 'preadolescente-menino';
-  return 'adolescente-menino';
+  return years;
+}
+
+function themeStageByAge(dateString) {
+  const years = ageYearsFromBirth(dateString);
+  if (years == null || years < 0) return null;
+  if (years <= 2) return 'bebe';
+  if (years <= 5) return 'primeira-infancia';
+  if (years <= 9) return 'infancia';
+  if (years <= 12) return 'pre-adolescencia';
+  if (years <= 17) return 'adolescencia';
+  return 'adolescencia';
+}
+
+function themeGenderFromChild(child) {
+  const sex = String(child.sexo || '').toLowerCase();
+  if (sex.includes('mascul')) return 'masculino';
+  if (sex.includes('femin')) return 'feminino';
+  return null;
+}
+
+function themeImagePath(gender, stage) {
+  if (!THEME_GENDERS.includes(gender) || !THEME_STAGES.includes(stage)) return '';
+  return `./themes/${gender}/${stage}.png`;
 }
 
 function effectiveTheme() {
   const child = currentChild();
-  const settings = state.settings || (state.settings = {});
-  if (settings.autoTheme !== false || !settings.theme || settings.theme === 'auto') return suggestThemeByAge(child.nascimento);
-  return settings.theme;
+  const mode = child.themeMode || 'auto';
+  if (mode === 'default') return { mode, image: '', stage: '', gender: '', reason: 'Tema padrão atual selecionado.' };
+  if (mode === 'manual') {
+    return {
+      mode,
+      stage: child.themeStage,
+      gender: child.themeGender,
+      image: themeImagePath(child.themeGender, child.themeStage),
+      reason: `Tema manual: ${THEME_STAGE_LABELS[child.themeStage]} / ${THEME_GENDER_LABELS[child.themeGender]}.`
+    };
+  }
+  const stage = themeStageByAge(child.nascimento);
+  const gender = themeGenderFromChild(child);
+  if (!stage) return { mode, image: '', stage: '', gender: '', reason: 'A recomendação automática depende da data de nascimento.' };
+  if (!gender) return { mode, image: '', stage, gender: '', reason: 'A recomendação automática depende do sexo cadastrado. Você pode escolher manualmente.' };
+  return {
+    mode,
+    stage,
+    gender,
+    image: themeImagePath(gender, stage),
+    reason: `Tema automático: ${THEME_STAGE_LABELS[stage]} / ${THEME_GENDER_LABELS[gender]}.`
+  };
 }
 
 function applyTheme() {
+  const child = currentChild();
   const theme = effectiveTheme();
-  document.body.dataset.theme = theme;
+  document.body.dataset.theme = 'padrao';
+  document.body.dataset.themeMode = theme.image ? 'decorativo' : 'padrao';
+  const heroArt = $('themeHeroArt');
+  if (heroArt) {
+    heroArt.classList.toggle('hidden', !theme.image);
+    if (theme.image) heroArt.src = theme.image;
+    else heroArt.removeAttribute('src');
+  }
   const hint = $('themeHint');
-  if (hint) hint.textContent = `Tema atual: ${theme.replace(/-/g, ' ')}`;
-  ['themeSelect', 'themeSelectMenu'].forEach(id => { if ($(id)) $(id).value = state.settings?.autoTheme !== false ? 'auto' : (state.settings?.theme || theme); });
-  if ($('autoThemeToggle')) $('autoThemeToggle').checked = state.settings?.autoTheme !== false;
+  if (hint) hint.textContent = theme.reason;
+  ['themeModeSelect', 'themeModeSelectMenu'].forEach(id => { if ($(id)) $(id).value = child.themeMode || 'auto'; });
+  if ($('themeStageSelect')) $('themeStageSelect').value = child.themeStage || 'bebe';
+  if ($('themeGenderSelect')) $('themeGenderSelect').value = child.themeGender || 'masculino';
+  const manualFields = $('manualThemeFields');
+  if (manualFields) manualFields.classList.toggle('hidden', child.themeMode !== 'manual');
+  const preview = $('themePreview');
+  if (preview) {
+    const previewSrc = themeImagePath(child.themeGender || 'masculino', child.themeStage || 'bebe');
+    preview.src = previewSrc;
+  }
 }
 
-function setThemeSelection(value) {
-  state.settings ||= {};
-  if (value === 'auto') {
-    state.settings.autoTheme = true;
-    state.settings.theme = 'auto';
-  } else {
-    state.settings.autoTheme = false;
-    state.settings.theme = value;
-  }
+function setThemeMode(value) {
+  const child = currentChild();
+  child.themeMode = ['auto', 'manual', 'default'].includes(value) ? value : 'auto';
+  saveState();
+  applyTheme();
+}
+
+function updateManualThemePreview() {
+  const stage = $('themeStageSelect')?.value || 'bebe';
+  const gender = $('themeGenderSelect')?.value || 'masculino';
+  const preview = $('themePreview');
+  if (preview) preview.src = themeImagePath(gender, stage);
+}
+
+function applyManualThemeSelection() {
+  const child = currentChild();
+  const stage = $('themeStageSelect')?.value || child.themeStage || 'bebe';
+  const gender = $('themeGenderSelect')?.value || child.themeGender || 'masculino';
+  if (THEME_STAGES.includes(stage)) child.themeStage = stage;
+  if (THEME_GENDERS.includes(gender)) child.themeGender = gender;
+  child.themeMode = 'manual';
   saveState();
   applyTheme();
 }
@@ -1819,8 +1900,10 @@ function addFormListeners() {
   $('drawerOpenQr')?.addEventListener('click', () => { switchTab('inicio', { closeMenu: true }); generateQrCode(); });
   $('drawerOpenBackup')?.addEventListener('click', () => { switchTab('inicio', { closeMenu: true }); document.querySelector('.backup-social-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
 
-  ['themeSelect','themeSelectMenu'].forEach(id => { if ($(id)) $(id).addEventListener('change', e => setThemeSelection(e.target.value)); });
-  $('autoThemeToggle')?.addEventListener('change', e => { state.settings ||= {}; state.settings.autoTheme = e.target.checked; if (e.target.checked) state.settings.theme = 'auto'; saveState(); applyTheme(); });
+  ['themeModeSelect','themeModeSelectMenu'].forEach(id => { if ($(id)) $(id).addEventListener('change', e => setThemeMode(e.target.value)); });
+  $('themeStageSelect')?.addEventListener('change', updateManualThemePreview);
+  $('themeGenderSelect')?.addEventListener('change', updateManualThemePreview);
+  $('applyManualThemeBtn')?.addEventListener('click', applyManualThemeSelection);
 
   $('newChildBtn').addEventListener('click', () => {
     const child = emptyChild();

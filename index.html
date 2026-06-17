@@ -11,11 +11,11 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/favicon.png" />
-  <link rel="stylesheet" href="styles.css?v=25" />
+  <link rel="stylesheet" href="styles.css?v=26" />
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script defer src="growth-reference.js"></script>
-  <script defer src="app.js?v=25"></script>
+  <script defer src="app.js?v=26"></script>
 </head>
 <body>
   <header class="app-header">
@@ -48,6 +48,7 @@
     <section id="inicio" class="tab-panel active">
       <div class="social-home">
         <div class="home-hero cardless">
+          <img id="themeHeroArt" class="theme-hero-art hidden" alt="" aria-hidden="true" />
           <div class="hero-topbar">
             <button type="button" id="openSideMenu" class="hero-circle-btn" aria-label="Abrir menu">☰</button>
             <button type="button" id="heroNotifyBtn" class="hero-circle-btn" aria-label="Notificações">🔔</button>
@@ -410,17 +411,30 @@
       <div class="two-columns">
         <article class="card">
           <h3>Personalização</h3>
-          <label>Tema visual<select id="themeSelect">
-            <option value="auto">Tema automático (recomendado)</option>
-            <option value="bebe-neutro">👶 Bebê neutro</option>
-            <option value="infantil-menino">🩵 Infantil menino</option>
-            <option value="infantil-menina">🩷 Infantil menina</option>
-            <option value="preadolescente-menino">🧒 Pré-adolescente menino</option>
-            <option value="preadolescente-menina">👧 Pré-adolescente menina</option>
-            <option value="adolescente-menino">👦 Adolescente menino</option>
-            <option value="adolescente-menina">👩 Adolescente menina</option>
+          <label>Tema visual<select id="themeModeSelect">
+            <option value="auto">Automático — recomendado</option>
+            <option value="manual">Escolher manualmente</option>
+            <option value="default">Padrão atual</option>
           </select></label>
-          <label class="switch-row"><input id="autoThemeToggle" type="checkbox" checked /> <span>Usar tema automático pela idade</span></label>
+          <div id="manualThemeFields" class="manual-theme-fields hidden">
+            <label>Fase<select id="themeStageSelect">
+              <option value="bebe">Bebê</option>
+              <option value="primeira-infancia">Primeira infância</option>
+              <option value="infancia">Infância</option>
+              <option value="pre-adolescencia">Pré-adolescência</option>
+              <option value="adolescencia">Adolescência</option>
+            </select></label>
+            <label>Sexo<select id="themeGenderSelect">
+              <option value="masculino">Masculino</option>
+              <option value="feminino">Feminino</option>
+            </select></label>
+            <div class="theme-preview-wrap">
+              <img id="themePreview" class="theme-preview" alt="Prévia do tema selecionado" />
+            </div>
+            <div class="actions">
+              <button type="button" id="applyManualThemeBtn" class="primary">Aplicar tema</button>
+            </div>
+          </div>
           <div id="themeHint" class="theme-hint"></div>
         </article>
         <article class="card">
@@ -464,15 +478,10 @@
       </div>
       <div class="side-menu-group">
         <h4>Personalização</h4>
-        <label>Tema<select id="themeSelectMenu">
-          <option value="auto">Tema automático</option>
-          <option value="bebe-neutro">👶 Bebê neutro</option>
-          <option value="infantil-menino">🩵 Infantil menino</option>
-          <option value="infantil-menina">🩷 Infantil menina</option>
-          <option value="preadolescente-menino">🧒 Pré-adolescente menino</option>
-          <option value="preadolescente-menina">👧 Pré-adolescente menina</option>
-          <option value="adolescente-menino">👦 Adolescente menino</option>
-          <option value="adolescente-menina">👩 Adolescente menina</option>
+        <label>Tema<select id="themeModeSelectMenu">
+          <option value="auto">Automático — recomendado</option>
+          <option value="manual">Escolher manualmente</option>
+          <option value="default">Padrão atual</option>
         </select></label>
       </div>
       <div class="side-menu-group">

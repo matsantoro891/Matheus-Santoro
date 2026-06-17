@@ -810,12 +810,32 @@ body[data-theme="adolescente-menina"] {
   margin-inline: calc(clamp(14px, 4vw, 32px) * -1);
   margin-top: -8px;
 }
+.theme-hero-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  opacity: 0.34;
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+  z-index: 1;
+}
+body[data-theme-mode="decorativo"] .home-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(5,45,115,0.64) 0%, rgba(5,45,115,0.38) 52%, rgba(14,74,167,0.72) 100%);
+}
 .hero-topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   position: relative;
-  z-index: 2;
+  z-index: 3;
 }
 .hero-circle-btn {
   width: 48px;
@@ -830,7 +850,7 @@ body[data-theme="adolescente-menina"] {
 }
 .hero-branding {
   position: relative;
-  z-index: 2;
+  z-index: 3;
   display: grid;
   justify-items: center;
   text-align: center;
@@ -856,7 +876,7 @@ body[data-theme="adolescente-menina"] {
   letter-spacing: -0.05em;
 }
 .hero-branding p { margin: 0; color: rgba(255,255,255,0.88); font-size: 1.05rem; }
-.hero-decor { position: absolute; color: rgba(255,255,255,0.55); pointer-events: none; }
+.hero-decor { position: absolute; z-index: 2; color: rgba(255,255,255,0.55); pointer-events: none; }
 .decor-cloud { width: 120px; height: 52px; background: rgba(255,255,255,0.82); filter: blur(1px); border-radius: 40px; }
 .decor-cloud::before, .decor-cloud::after { content: ''; position: absolute; background: rgba(255,255,255,0.82); border-radius: 50%; }
 .decor-cloud::before { width: 56px; height: 56px; left: 14px; top: -22px; }
@@ -995,6 +1015,23 @@ body[data-theme="adolescente-menina"] {
 .switch-row { display: flex; align-items: center; gap: 10px; }
 .switch-row input { width: auto; }
 .theme-hint { margin-top: 8px; color: var(--muted); font-weight: 700; }
+.manual-theme-fields {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+.theme-preview-wrap {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--soft);
+}
+.theme-preview {
+  display: block;
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+}
 
 .side-menu {
   position: fixed;
