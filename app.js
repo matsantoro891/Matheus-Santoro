@@ -1529,16 +1529,28 @@ function svgPath(points, xScale, yScale) {
   return valid.map((p, index) => `${index ? 'L' : 'M'} ${xScale(p.x).toFixed(1)} ${yScale(p.y).toFixed(1)}`).join(' ');
 }
 
-function renderGrowthChart(metric) {
-  const child = currentChild();
-  const container = metric === 'weight' ? $('weightGrowthChart') : $('heightGrowthChart');
-  const status = metric === 'weight' ? $('weightChartStatus') : $('heightChartStatus');
-  if (!container) return;
+function growthChartSvgStyle() {
+  return `<style>
+    .chart-bg{fill:#ffffff;stroke:#e4edf9;stroke-width:1}
+    .chart-grid-line{stroke:#dfe8f5;stroke-width:1}
+    .chart-grid-line.vertical{stroke-dasharray:3 5}
+    .axis-label{fill:#6b7890;font-size:11px;font-family:Inter,Arial,sans-serif}
+    .axis-title{fill:#35445e;font-size:12px;font-weight:800;font-family:Inter,Arial,sans-serif}
+    .curve-label{fill:#61718d;font-size:10px;font-weight:800;font-family:Inter,Arial,sans-serif}
+    .child-growth-point{fill:#ff9e2f;stroke:#ffffff;stroke-width:3;filter:drop-shadow(0 3px 5px rgba(255,158,47,.35))}
+    .point-label{fill:#b65f00;font-size:10px;font-weight:900;font-family:Inter,Arial,sans-serif}
+  </style>`;
+}
+
+function buildGrowthChartView(metric, child = currentChild()) {
   const sex = childSexKey(child);
   if (!child.nascimento || !sex) {
-    container.innerHTML = '<div class="growth-empty">Cadastre a data de nascimento e o sexo da criança para exibir as curvas.</div>';
-    status.textContent = '';
-    return;
+    return {
+      html: '<div class="growth-empty">Cadastre a data de nascimento e o sexo da criança para exibir as curvas.</div>',
+      statusText: '',
+      sourceText: metric === 'weight' ? 'Referência: OMS. Peso por idade disponível até 10 anos.' : 'Referência: OMS. Altura por idade disponível até 19 anos.',
+      unavailable: true
+    };
   }
   const category = metric === 'weight' ? 'Peso' : 'Altura';
   const items = child.milestones.filter(item => item.category === category).map(item => {
@@ -1556,9 +1568,12 @@ function renderGrowthChart(metric) {
   }));
   const allY = referenceSeries.flatMap(series => series.points.map(point => point.y)).concat(items.filter(p => p.x <= maxMonths).map(p => p.y));
   if (!allY.length) {
-    container.innerHTML = '<div class="growth-empty">Referência indisponível para esta idade.</div>';
-    status.textContent = '';
-    return;
+    return {
+      html: '<div class="growth-empty">Referência indisponível para esta idade.</div>',
+      statusText: '',
+      sourceText: metric === 'weight' ? 'Referência: OMS. Peso por idade disponível até 10 anos.' : 'Referência: OMS. Altura por idade disponível até 19 anos.',
+      unavailable: true
+    };
   }
   let yMin = Math.min(...allY), yMax = Math.max(...allY);
   const pad = Math.max((yMax - yMin) * 0.09, metric === 'weight' ? 0.5 : 0.03);
@@ -1577,9 +1592,27 @@ function renderGrowthChart(metric) {
   }).join('');
   const gridY = yTicks.map(value => `<line x1="${left}" y1="${yScale(value)}" x2="${W-right}" y2="${yScale(value)}" class="chart-grid-line"/><text x="${left-8}" y="${yScale(value)+4}" text-anchor="end" class="axis-label">${formatLocaleNumber(value, metric === 'weight' ? 1 : 2)}</text>`).join('');
   const gridX = xTicks.map(value => `<line x1="${xScale(value)}" y1="${top}" x2="${xScale(value)}" y2="${H-bottom}" class="chart-grid-line vertical"/><text x="${xScale(value)}" y="${H-bottom+24}" text-anchor="middle" class="axis-label">${value < 24 ? Math.round(value) + 'm' : formatLocaleNumber(value/12,1) + 'a'}</text>`).join('');
-  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de ${category.toLowerCase()} por idade"><rect x="${left}" y="${top}" width="${plotW}" height="${plotH}" rx="12" class="chart-bg"/>${gridY}${gridX}${curves}${points}<text x="${left}" y="16" class="axis-title">${metric === 'weight' ? 'Peso (kg)' : 'Altura (m)'}</text><text x="${W-right}" y="${H-8}" text-anchor="end" class="axis-title">Idade</text></svg>`;
+  const svgInner = `${growthChartSvgStyle()}<rect x="${left}" y="${top}" width="${plotW}" height="${plotH}" rx="12" class="chart-bg"/>${gridY}${gridX}${curves}${points}<text x="${left}" y="16" class="axis-title">${metric === 'weight' ? 'Peso (kg)' : 'Altura (m)'}</text><text x="${W-right}" y="${H-8}" text-anchor="end" class="axis-title">Idade</text>`;
+  const html = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de ${category.toLowerCase()} por idade">${svgInner}</svg>`;
   const latest = [...items].sort((a,b) => (b.item.date || '').localeCompare(a.item.date || ''))[0];
-  status.textContent = latest?.result ? `Último: ${percentileLabel(latest.result)}` : items.length ? 'Sem referência para o último registro' : 'Sem registros';
+  return {
+    html,
+    svgInner,
+    statusText: latest?.result ? `Último: ${percentileLabel(latest.result)}` : items.length ? 'Sem referência para o último registro' : 'Sem registros',
+    sourceText: metric === 'weight' ? 'Referência: OMS. Peso por idade disponível até 10 anos.' : 'Referência: OMS. Altura por idade disponível até 19 anos.',
+    unavailable: false,
+    width: W,
+    height: H
+  };
+}
+
+function renderGrowthChart(metric) {
+  const container = metric === 'weight' ? $('weightGrowthChart') : $('heightGrowthChart');
+  const status = metric === 'weight' ? $('weightChartStatus') : $('heightChartStatus');
+  if (!container) return;
+  const view = buildGrowthChartView(metric);
+  container.innerHTML = view.html;
+  status.textContent = view.statusText;
 }
 
 function renderGrowthCharts() {
@@ -2380,14 +2413,8 @@ async function generateSelectedChildPdf() {
     y = addSection(doc, 'MARCOS & EVOLUÇÃO', y, [34, 178, 125]);
     if (!child.milestones.length) y = addParagraph(doc, 'Nenhum marco cadastrado.', y);
     child.milestones.sort((a,b) => (a.date || '').localeCompare(b.date || '')).forEach(m => y = addParagraph(doc, evolutionRecordText(m, child), y));
-    y = await addEvolutionChartToPdf(doc, y, child, 'height', {
-      title: 'Evolução da Altura',
-      emptyMessage: 'Nenhum registro de altura disponível.'
-    });
-    y = await addEvolutionChartToPdf(doc, y, child, 'weight', {
-      title: 'Evolução do Peso',
-      emptyMessage: 'Nenhum registro de peso disponível.'
-    });
+    y = await addEvolutionChartToPdf(doc, y, child, 'weight');
+    y = await addEvolutionChartToPdf(doc, y, child, 'height');
   }
 
   if (sections.includes('memoriasFavoritas')) {
@@ -2494,150 +2521,56 @@ function addEvolutionChildData(doc, child, y) {
   return y;
 }
 
-function evolutionChartEntries(child, metric) {
-  const category = metric === 'weight' ? 'Peso' : 'Altura';
-  return child.milestones
-    .filter(item => item.category === category)
-    .map(item => {
-      const measured = milestoneMeasurement(item);
-      const value = metric === 'height' ? measured / 100 : measured;
-      const ageDays = ageDaysAt(child, item.date);
-      return {
-        item,
-        date: item.date || '',
-        label: item.date ? formatDate(item.date) : 'Sem data',
-        ageLabel: ageDays != null ? (ageDays < 730 ? `${Math.round(ageDays / 30.4375)}m` : `${formatLocaleNumber(ageDays / 365.25, 1)}a`) : '',
-        value
-      };
-    })
-    .filter(entry => Number.isFinite(entry.value))
-    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+function growthChartPdfSvg(metric, child) {
+  const view = buildGrowthChartView(metric, child);
+  const title = metric === 'weight' ? 'Peso por idade' : 'Altura por idade';
+  const description = metric === 'weight'
+    ? 'Curvas de referência da OMS e registros da criança.'
+    : 'Curvas de referência da OMS e registros da criança.';
+  const status = view.statusText || (view.unavailable ? '' : 'Sem registros');
+  const statusBadge = status
+    ? `<rect x="760" y="42" width="380" height="38" rx="19" fill="#eaf2ff"/><text x="950" y="66" text-anchor="middle" fill="#2f6ed0" font-size="18" font-weight="800" font-family="Inter,Arial,sans-serif">${escapeHtml(status)}</text>`
+    : '';
+  const chart = view.unavailable
+    ? `<rect x="40" y="115" width="1120" height="500" rx="24" fill="#fbfdff" stroke="#dce7f8"/>
+       <text x="600" y="365" text-anchor="middle" fill="#62708a" font-size="28" font-weight="700" font-family="Inter,Arial,sans-serif">${view.html.replace(/<[^>]+>/g, '')}</text>`
+    : `<rect x="40" y="115" width="1120" height="500" rx="24" fill="#fbfdff" stroke="#dce7f8"/>
+       <svg x="70" y="140" width="1060" height="488" viewBox="0 0 ${view.width} ${view.height}">${view.svgInner}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720">
+    <rect width="1200" height="720" fill="#ffffff"/>
+    <text x="40" y="52" fill="#17213a" font-size="34" font-weight="800" font-family="Inter,Arial,sans-serif">${title}</text>
+    <text x="40" y="84" fill="#62708a" font-size="20" font-weight="500" font-family="Inter,Arial,sans-serif">${description}</text>
+    ${statusBadge}
+    ${chart}
+    <text x="40" y="682" fill="#62708a" font-size="19" font-weight="600" font-family="Inter,Arial,sans-serif">${view.sourceText}</text>
+  </svg>`;
 }
 
-function drawEvolutionChartToCanvas(metric, entries) {
-  return new Promise(resolve => {
-    const canvas = document.createElement('canvas');
-    const width = 1200;
-    const height = 620;
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    const title = metric === 'weight' ? 'Evolução do peso' : 'Evolução da altura';
-    const unit = metric === 'weight' ? 'kg' : 'm';
-    const left = 110, right = 54, top = 92, bottom = 108;
-    const plotW = width - left - right;
-    const plotH = height - top - bottom;
-    const values = entries.map(entry => entry.value);
-    let minY = Math.min(...values);
-    let maxY = Math.max(...values);
-    if (minY === maxY) {
-      const padding = metric === 'weight' ? 1 : 0.05;
-      minY = Math.max(0, minY - padding);
-      maxY += padding;
-    } else {
-      const padding = Math.max((maxY - minY) * 0.16, metric === 'weight' ? 0.5 : 0.03);
-      minY = Math.max(0, minY - padding);
-      maxY += padding;
-    }
-    const xScale = index => entries.length === 1 ? left + plotW / 2 : left + (index / (entries.length - 1)) * plotW;
-    const yScale = value => top + (1 - (value - minY) / (maxY - minY)) * plotH;
-
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = '#17213a';
-    ctx.font = '700 34px Arial';
-    ctx.fillText(title, left, 48);
-    ctx.fillStyle = '#62708a';
-    ctx.font = '500 22px Arial';
-    ctx.fillText(`Eixo horizontal: data/idade | Eixo vertical: ${unit}`, left, 78);
-
-    ctx.strokeStyle = '#dce7f8';
-    ctx.lineWidth = 2;
-    ctx.fillStyle = '#fbfdff';
-    ctx.fillRect(left, top, plotW, plotH);
-    ctx.strokeRect(left, top, plotW, plotH);
-
-    const yTicks = Array.from({ length: 6 }, (_, index) => minY + ((maxY - minY) * index) / 5);
-    ctx.font = '500 20px Arial';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    yTicks.forEach(value => {
-      const y = yScale(value);
-      ctx.strokeStyle = '#e8f0fb';
-      ctx.beginPath();
-      ctx.moveTo(left, y);
-      ctx.lineTo(left + plotW, y);
-      ctx.stroke();
-      ctx.fillStyle = '#62708a';
-      ctx.fillText(`${formatLocaleNumber(value, metric === 'weight' ? 1 : 2)} ${unit}`, left - 14, y);
-    });
-
-    ctx.strokeStyle = '#2f6ed0';
-    ctx.lineWidth = 5;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    entries.forEach((entry, index) => {
-      const x = xScale(index), y = yScale(entry.value);
-      if (index === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-
-    entries.forEach((entry, index) => {
-      const x = xScale(index), y = yScale(entry.value);
-      ctx.fillStyle = '#ffffff';
-      ctx.strokeStyle = '#2f6ed0';
-      ctx.lineWidth = 5;
-      ctx.beginPath();
-      ctx.arc(x, y, 10, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = '#17213a';
-      ctx.font = '700 19px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${formatLocaleNumber(entry.value, metric === 'weight' ? 2 : 2)} ${unit}`, x, Math.max(top + 22, y - 22));
-    });
-
-    ctx.fillStyle = '#62708a';
-    ctx.font = '600 18px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    entries.forEach((entry, index) => {
-      const x = xScale(index);
-      ctx.fillText(entry.label, x, top + plotH + 22);
-      if (entry.ageLabel) ctx.fillText(entry.ageLabel, x, top + plotH + 48);
-    });
-
-    ctx.save();
-    ctx.translate(28, top + plotH / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.fillStyle = '#17213a';
-    ctx.font = '700 22px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText(metric === 'weight' ? 'Peso (kg)' : 'Altura (m)', 0, 0);
-    ctx.restore();
-
-    requestAnimationFrame(() => resolve(canvas.toDataURL('image/png', 1)));
+function svgToPngDataUrl(svg, width = 2400, height = 1440) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, width, height);
+      context.drawImage(image, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/png', 1));
+    };
+    image.onerror = reject;
+    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   });
 }
 
 async function addEvolutionChartToPdf(doc, y, child, metric, options = {}) {
-  const title = options.title || (metric === 'weight' ? 'Evolução do Peso' : 'Evolução da Altura');
-  const emptyMessage = options.emptyMessage || (metric === 'weight'
-    ? 'Nenhum registro de peso disponível.'
-    : 'Nenhum registro de altura disponível.');
-  const insufficientMessage = options.insufficientMessage || (metric === 'weight'
-    ? 'Ainda não existem registros de peso suficientes para gerar o gráfico.'
-    : 'Ainda não existem registros de altura suficientes para gerar o gráfico.');
-  const entries = evolutionChartEntries(child, metric);
+  const title = options.title || (metric === 'weight' ? 'Peso por idade' : 'Altura por idade');
   y = addSection(doc, title, y, metric === 'weight' ? [22, 110, 229] : [34, 178, 125]);
-  if (!entries.length) return addParagraph(doc, emptyMessage, y);
-  if (entries.length < 2) return addParagraph(doc, insufficientMessage, y);
-  y = ensurePage(doc, y, 92);
-  const chartDataUrl = await drawEvolutionChartToCanvas(metric, entries);
-  addImageSafe(doc, chartDataUrl, 16, y, 178, 88);
-  return y + 96;
+  y = ensurePage(doc, y, 118);
+  const chartDataUrl = await svgToPngDataUrl(growthChartPdfSvg(metric, child));
+  addImageSafe(doc, chartDataUrl, 16, y, 178, 107);
+  return y + 114;
 }
 
 function evolutionRecordText(item, child) {
