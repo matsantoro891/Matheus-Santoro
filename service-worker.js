@@ -1,11 +1,11 @@
-const CACHE_NAME = 'crescer-juntos-v28-cache';
+const CACHE_NAME = 'crescer-juntos-v29-cache';
 const CORE_ASSETS = [
   './',
   './index.html',
-  './styles.css?v=28',
-  './app.js?v=28',
-  './growth-reference.js?v=28',
-  './manifest.json?v=28',
+  './styles.css?v=29',
+  './app.js?v=29',
+  './growth-reference.js?v=29',
+  './manifest.json?v=29',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',

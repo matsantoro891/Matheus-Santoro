@@ -817,8 +817,7 @@ body[data-theme="adolescente-menina"] {
   height: 100%;
   object-fit: cover;
   object-position: center;
-  opacity: 0.34;
-  mix-blend-mode: soft-light;
+  opacity: 0.92;
   pointer-events: none;
   z-index: 1;
 }
@@ -828,7 +827,7 @@ body[data-theme-mode="decorativo"] .home-hero::after {
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(5,45,115,0.64) 0%, rgba(5,45,115,0.38) 52%, rgba(14,74,167,0.72) 100%);
+  background: linear-gradient(180deg, rgba(5,45,115,0.22) 0%, rgba(255,255,255,0.08) 48%, rgba(5,45,115,0.28) 100%);
 }
 .hero-topbar {
   display: flex;
@@ -877,6 +876,22 @@ body[data-theme-mode="decorativo"] .home-hero::after {
 }
 .hero-branding p { margin: 0; color: rgba(255,255,255,0.88); font-size: 1.05rem; }
 .hero-decor { position: absolute; z-index: 2; color: rgba(255,255,255,0.55); pointer-events: none; }
+body[data-theme-mode="decorativo"] .hero-decor { display: none; }
+body[data-theme-mode="decorativo"] .hero-branding h2,
+body[data-theme-mode="decorativo"] .hero-branding p {
+  text-shadow: 0 2px 12px rgba(5, 25, 70, 0.42);
+}
+body[data-theme-mode="decorativo"] .hero-circle-btn {
+  background: rgba(5,45,115,0.28);
+  border-color: rgba(255,255,255,0.58);
+}
+body[data-theme-gender="feminino"] .theme-hero-art { filter: saturate(1.12) contrast(1.04); }
+body[data-theme-gender="masculino"] .theme-hero-art { filter: saturate(1.08) contrast(1.06); }
+body[data-theme-stage="bebe"] .theme-hero-art { object-position: center top; }
+body[data-theme-stage="primeira-infancia"] .theme-hero-art,
+body[data-theme-stage="infancia"] .theme-hero-art { object-position: center center; }
+body[data-theme-stage="pre-adolescencia"] .theme-hero-art,
+body[data-theme-stage="adolescencia"] .theme-hero-art { object-position: center 42%; }
 .decor-cloud { width: 120px; height: 52px; background: rgba(255,255,255,0.82); filter: blur(1px); border-radius: 40px; }
 .decor-cloud::before, .decor-cloud::after { content: ''; position: absolute; background: rgba(255,255,255,0.82); border-radius: 50%; }
 .decor-cloud::before { width: 56px; height: 56px; left: 14px; top: -22px; }

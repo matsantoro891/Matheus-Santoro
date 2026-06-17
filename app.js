@@ -233,6 +233,8 @@ function applyTheme() {
   const token = ++themeLoadToken;
   document.body.dataset.theme = 'padrao';
   document.body.dataset.themeMode = 'padrao';
+  delete document.body.dataset.themeGender;
+  delete document.body.dataset.themeStage;
   const heroArt = $('themeHeroArt');
   if (heroArt) {
     heroArt.classList.add('hidden');
@@ -244,6 +246,8 @@ function applyTheme() {
         heroArt.src = theme.image;
         heroArt.classList.remove('hidden');
         document.body.dataset.themeMode = 'decorativo';
+        document.body.dataset.themeGender = theme.gender;
+        document.body.dataset.themeStage = theme.stage;
       };
       image.onerror = () => {
         if (token !== themeLoadToken) return;
