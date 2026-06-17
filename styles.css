@@ -173,7 +173,35 @@ button, .import-label {
 .primary:hover { background: var(--primary-dark); }
 .secondary { background: var(--soft); color: var(--primary-dark); }
 .secondary.active { background: var(--primary); color: white; }
-.danger { background: #ffe9e9; color: var(--danger); }
+.danger { background: var(--soft); color: var(--primary-dark); }
+
+.confirm-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(8, 18, 40, 0.48);
+}
+.confirm-dialog-card {
+  width: min(380px, 94vw);
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 18px;
+  box-shadow: 0 26px 70px rgba(0,0,0,0.26);
+  color: var(--ink);
+}
+.confirm-dialog-card p {
+  margin: 0;
+  line-height: 1.45;
+  font-weight: 800;
+}
+.confirm-dialog-actions {
+  justify-content: flex-end;
+  margin-top: 16px;
+}
 
 .hidden { display: none !important; }
 .list, .milestone-list { display: grid; gap: 12px; margin-top: 14px; }

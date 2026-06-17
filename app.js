@@ -204,6 +204,46 @@ function showToast(message) {
   toastTimer = setTimeout(() => toast.classList.remove('show'), 2600);
 }
 
+function confirmUserChoice(message = 'Deseja realmente excluir este item?') {
+  return new Promise(resolve => {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'confirm-dialog-backdrop';
+    const card = document.createElement('div');
+    card.className = 'confirm-dialog-card';
+    const text = document.createElement('p');
+    text.textContent = message;
+    const actions = document.createElement('div');
+    actions.className = 'actions confirm-dialog-actions';
+    const yesButton = document.createElement('button');
+    yesButton.type = 'button';
+    yesButton.className = 'primary';
+    yesButton.textContent = 'Sim';
+    const noButton = document.createElement('button');
+    noButton.type = 'button';
+    noButton.className = 'secondary';
+    noButton.textContent = 'Não';
+    const cleanup = result => {
+      document.removeEventListener('keydown', onKeydown);
+      backdrop.remove();
+      resolve(result);
+    };
+    const onKeydown = event => {
+      if (event.key === 'Escape') cleanup(false);
+    };
+    yesButton.addEventListener('click', () => cleanup(true), { once: true });
+    noButton.addEventListener('click', () => cleanup(false), { once: true });
+    backdrop.addEventListener('click', event => {
+      if (event.target === backdrop) cleanup(false);
+    });
+    actions.append(noButton, yesButton);
+    card.append(text, actions);
+    backdrop.appendChild(card);
+    document.body.appendChild(backdrop);
+    document.addEventListener('keydown', onKeydown);
+    noButton.focus();
+  });
+}
+
 function escapeHtml(value = '') {
   return String(value).replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
 }
@@ -802,6 +842,7 @@ window.removeExam = async function(examId) {
   const child = currentChild();
   const exam = child.exams.find(item => item.id === examId);
   if (!exam) return;
+  if (!await confirmUserChoice('Deseja realmente excluir este exame?')) return;
   if (exam.file?.id && exam.file.storage === 'indexeddb') {
     await deleteExamAttachmentRecord(exam.file.id).catch(console.warn);
   }
@@ -1240,6 +1281,7 @@ window.replaceMemoryAsset = async function(event, memoryId, assetId) {
 window.deleteMemoryAsset = async function(memoryId, assetId) {
   const memory = currentChild().memories.find(m => m.id === memoryId);
   if (!memory) return;
+  if (!await confirmUserChoice('Deseja realmente excluir este anexo da memória?')) return;
   await deleteExamAttachmentRecord(assetId).catch(console.warn);
   memory.files = memoryAssets(memory).filter(a => a.id !== assetId);
   activeMemoryAssetIndex = Math.max(0, Math.min(activeMemoryAssetIndex, memory.files.length - 1));
@@ -1646,7 +1688,7 @@ window.editMilestone = function(id) {
 };
 
 window.deleteMilestone = async function(id) {
-  if (!confirm('Deseja realmente excluir este registro de evolução?')) return;
+  if (!await confirmUserChoice('Deseja realmente excluir este registro de evolução?')) return;
   const child = currentChild();
   const item = child.milestones.find(record => record.id === id);
   await deleteLocalFileRef(item?.photo);
@@ -1707,6 +1749,7 @@ window.removeItem = async function(collection, id) {
   const child = currentChild();
   if (!Array.isArray(child[collection])) return;
   const item = child[collection].find(record => record.id === id);
+  if (!await confirmUserChoice('Deseja realmente excluir este item?')) return;
   await deleteFilesForItem(collection, item);
   child[collection] = child[collection].filter(record => record.id !== id);
   saveState();
@@ -1790,15 +1833,16 @@ function addFormListeners() {
 
   $('deleteChildBtn').addEventListener('click', async () => {
     const childToDelete = currentChild();
+    if (!await confirmUserChoice('Deseja realmente excluir esta criança e todos os dados vinculados?')) return;
     if (state.children.length <= 1) {
       await deleteFilesForChild(childToDelete);
       state.children = [emptyChild()];
       state.activeChildId = state.children[0].id;
-    } else if (confirm('Excluir esta criança e todos os dados vinculados?')) {
+    } else {
       await deleteFilesForChild(childToDelete);
       state.children = state.children.filter(c => c.id !== state.activeChildId);
       state.activeChildId = state.children[0].id;
-    } else return;
+    }
     saveState();
     renderAll();
     showToast('Cadastro excluído.');
