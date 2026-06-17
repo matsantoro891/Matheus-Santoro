@@ -1000,7 +1000,7 @@ function renderMemories() {
           <div class="memory-actions">
             <button class="secondary" onclick="openMemoryViewer('${m.id}',0)">Abrir</button>
             <button class="secondary" onclick="toggleFavorite('${m.id}')">${m.favorite ? 'Remover favorito' : 'Favoritar'}</button>
-            <button class="danger" onclick="removeItem('memories','${m.id}')">Excluir</button>
+            <button class="primary memory-delete-button" onclick="removeItem('memories','${m.id}')">Excluir</button>
           </div>
         </div>
       </article>`;
@@ -1167,7 +1167,7 @@ function renderMemoryAttachmentList(memory) {
             <button type="button" class="secondary" onclick="downloadMemoryAsset('${memory.id}','${asset.id}')">Baixar</button>
             <button type="button" class="secondary" onclick="shareMemoryAsset('${memory.id}','${asset.id}')">Compartilhar</button>
             <label class="secondary tiny-file-label">Substituir<input type="file" hidden onchange="replaceMemoryAsset(event,'${memory.id}','${asset.id}')" /></label>
-            <button type="button" class="danger" onclick="deleteMemoryAsset('${memory.id}','${asset.id}')">Excluir</button>
+            <button type="button" class="primary memory-delete-button" onclick="deleteMemoryAsset('${memory.id}','${asset.id}')">Excluir</button>
           </div>
         </div>
       </div>`).join('')}
@@ -1749,7 +1749,8 @@ window.removeItem = async function(collection, id) {
   const child = currentChild();
   if (!Array.isArray(child[collection])) return;
   const item = child[collection].find(record => record.id === id);
-  if (!await confirmUserChoice('Deseja realmente excluir este item?')) return;
+  const message = collection === 'memories' ? 'Deseja realmente excluir esta memória?' : 'Deseja realmente excluir este item?';
+  if (!await confirmUserChoice(message)) return;
   await deleteFilesForItem(collection, item);
   child[collection] = child[collection].filter(record => record.id !== id);
   saveState();
