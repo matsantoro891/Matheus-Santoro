@@ -42,9 +42,9 @@ button, .import-label { cursor: pointer; }
 .brand { display: flex; gap: 14px; align-items: center; }
 .brand .brand-logo {
   display: block;
-  height: 60px;
+  height: 48px;
   width: auto;
-  max-width: 92px;
+  max-width: 73.6px;
   object-fit: contain;
   object-position: center;
   flex: 0 0 auto;
@@ -307,7 +307,7 @@ button, .import-label {
 
 @media (max-width: 520px) {
   .layout { padding-inline: 12px; }
-  .brand .brand-logo { height: 58px; width: auto; max-width: 88px; }
+  .brand .brand-logo { height: 46.4px; width: auto; max-width: 70.4px; }
   .child-switcher { width: 100%; }
   .child-switcher select, .child-switcher button { flex: 1 1 100%; }
   .memory-grid { grid-template-columns: 1fr; }
@@ -810,8 +810,8 @@ body[data-theme="adolescente-menina"] {
 }
 .hero-logo {
   display: block;
-  width: min(170px, 42vw);
-  height: 118px;
+  width: min(136px, 33.6vw);
+  height: 94.4px;
   max-width: 100%;
   object-fit: contain;
   object-position: center;
@@ -933,6 +933,7 @@ body[data-theme="adolescente-menina"] {
 .compact-panel { display: flex; justify-content: space-between; gap: 14px; align-items: center; }
 .compact-panel h3 { margin-bottom: 4px; }
 .compact-actions { margin-top: 0; }
+#childPdfBuilder { scroll-margin-top: 96px; }
 .backup-social-card {
   background: linear-gradient(180deg, #062d73 0%, #08285c 100%);
   color: #fff;
@@ -1033,7 +1034,7 @@ body[data-theme="adolescente-menina"] {
 @media (max-width: 520px) {
   .home-hero { padding: 14px 16px 26px; min-height: 222px; border-radius: 0 0 28px 28px; }
   .hero-circle-btn { width: 44px; height: 44px; }
-  .hero-logo { width: min(150px, 44vw); height: 104px; object-fit: contain; object-position: center; border-radius: 0; box-shadow: none; }
+  .hero-logo { width: min(120px, 35.2vw); height: 83.2px; object-fit: contain; object-position: center; border-radius: 0; box-shadow: none; }
   .cloud-left { top: 86px; opacity: 0.66; }
   .cloud-right { top: 90px; opacity: 0.62; }
   .hero-branding h2 { font-size: 2.1rem; }

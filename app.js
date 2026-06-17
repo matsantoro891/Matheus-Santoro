@@ -1336,6 +1336,17 @@ function renderProfileSettings() {
   applyTheme();
 }
 
+function openChildPdfBuilderAndScroll() {
+  const builder = $('childPdfBuilder');
+  if (!builder) return;
+  builder.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      builder.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+    });
+  });
+}
+
 function renderEvents() {
   const child = currentChild();
   const events = [...child.events].sort((a, b) => `${a.date || ''}${a.time || ''}`.localeCompare(`${b.date || ''}${b.time || ''}`));
@@ -1721,7 +1732,7 @@ function addFormListeners() {
 
   $('newChildBtnPanel')?.addEventListener('click', () => $('newChildBtn').click());
   $('newChildBtnMenu')?.addEventListener('click', () => { $('newChildBtn').click(); closeSideMenu(); });
-  $('openChildPdfBuilderProfile')?.addEventListener('click', () => { switchTab('inicio'); $('childPdfBuilder').classList.remove('hidden'); });
+  $('openChildPdfBuilderProfile')?.addEventListener('click', () => { switchTab('inicio'); openChildPdfBuilderAndScroll(); });
   $('openMemoriesPdfProfile')?.addEventListener('click', () => { switchTab('memorias'); $('memoryPdfBuilder').classList.remove('hidden'); renderManualMemorySelection(); });
   $('openEvolutionPdfProfile')?.addEventListener('click', () => generateEvolutionPdf());
   $('makeQrBtnProfile')?.addEventListener('click', () => { switchTab('inicio'); generateQrCode(); });
@@ -1962,7 +1973,7 @@ function addFormListeners() {
   });
   $('generateEvolutionPdfBtn').addEventListener('click', () => generateEvolutionPdf());
 
-  $('openChildPdfBuilder').addEventListener('click', () => $('childPdfBuilder').classList.remove('hidden'));
+  $('openChildPdfBuilder').addEventListener('click', openChildPdfBuilderAndScroll);
   $('closeChildPdfBuilder').addEventListener('click', () => $('childPdfBuilder').classList.add('hidden'));
   $('generateSelectedChildPdf').addEventListener('click', () => generateSelectedChildPdf());
   $('makeQrBtn').addEventListener('click', generateQrCode);
@@ -2368,7 +2379,15 @@ async function generateSelectedChildPdf() {
   if (sections.includes('evolucao')) {
     y = addSection(doc, 'MARCOS & EVOLUÇÃO', y, [34, 178, 125]);
     if (!child.milestones.length) y = addParagraph(doc, 'Nenhum marco cadastrado.', y);
-    child.milestones.sort((a,b) => (a.date || '').localeCompare(b.date || '')).forEach(m => y = addParagraph(doc, `• ${formatDate(m.date)} - ${m.category}: ${m.title || ''} ${m.value ? '(' + m.value + ')' : ''}. ${m.description || ''}`, y));
+    child.milestones.sort((a,b) => (a.date || '').localeCompare(b.date || '')).forEach(m => y = addParagraph(doc, evolutionRecordText(m, child), y));
+    y = await addEvolutionChartToPdf(doc, y, child, 'height', {
+      title: 'Evolução da Altura',
+      emptyMessage: 'Nenhum registro de altura disponível.'
+    });
+    y = await addEvolutionChartToPdf(doc, y, child, 'weight', {
+      title: 'Evolução do Peso',
+      emptyMessage: 'Nenhum registro de peso disponível.'
+    });
   }
 
   if (sections.includes('memoriasFavoritas')) {
@@ -2443,36 +2462,320 @@ async function generateMemoryAlbumPdf() {
   showToast('Recordações criadas.');
 }
 
+function pdfCleanValue(value) {
+  if (value == null) return '';
+  const text = String(value).trim();
+  return /^(undefined|null)$/i.test(text) ? '' : text;
+}
+
+function pdfJoinValues(values, separator = ' ') {
+  return values.map(pdfCleanValue).filter(Boolean).join(separator);
+}
+
+function selectedPdfSections() {
+  const selected = qsa('input[name="pdfSection"]:checked').map(input => input.value);
+  return selected.length ? selected : ['cadastro', 'fotoBio', 'saude', 'medicacoes', 'exames', 'arquivosMedicos', 'agenda', 'evolucao', 'memoriasFavoritas'];
+}
+
+function addCleanLine(doc, label, value, y) {
+  return addLine(doc, label, pdfCleanValue(value), y);
+}
+
+function addEvolutionChildData(doc, child, y) {
+  y = addSection(doc, 'DADOS DA CRIANÇA', y, [22, 110, 229]);
+  y = addCleanLine(doc, 'Nome', childDisplayName(child), y);
+  y = addCleanLine(doc, 'Nascimento', child.nascimento ? formatDate(child.nascimento) : '', y);
+  y = addCleanLine(doc, 'Idade', child.nascimento ? calculateAgeText(child.nascimento) : '', y);
+  y = addCleanLine(doc, 'Sexo', child.sexo, y);
+  y = addCleanLine(doc, 'Tipo sanguíneo', child.tipoSanguineo, y);
+  y = addCleanLine(doc, 'Mãe', pdfJoinValues([child.mae, child.telefoneMae], ' - '), y);
+  y = addCleanLine(doc, 'Pai', pdfJoinValues([child.pai, child.telefonePai], ' - '), y);
+  y = addCleanLine(doc, 'Pediatra', pdfJoinValues([child.pediatraNome, child.pediatraTelefone], ' - '), y);
+  return y;
+}
+
+function evolutionChartEntries(child, metric) {
+  const category = metric === 'weight' ? 'Peso' : 'Altura';
+  return child.milestones
+    .filter(item => item.category === category)
+    .map(item => {
+      const measured = milestoneMeasurement(item);
+      const value = metric === 'height' ? measured / 100 : measured;
+      const ageDays = ageDaysAt(child, item.date);
+      return {
+        item,
+        date: item.date || '',
+        label: item.date ? formatDate(item.date) : 'Sem data',
+        ageLabel: ageDays != null ? (ageDays < 730 ? `${Math.round(ageDays / 30.4375)}m` : `${formatLocaleNumber(ageDays / 365.25, 1)}a`) : '',
+        value
+      };
+    })
+    .filter(entry => Number.isFinite(entry.value))
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+}
+
+function drawEvolutionChartToCanvas(metric, entries) {
+  return new Promise(resolve => {
+    const canvas = document.createElement('canvas');
+    const width = 1200;
+    const height = 620;
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    const title = metric === 'weight' ? 'Evolução do peso' : 'Evolução da altura';
+    const unit = metric === 'weight' ? 'kg' : 'm';
+    const left = 110, right = 54, top = 92, bottom = 108;
+    const plotW = width - left - right;
+    const plotH = height - top - bottom;
+    const values = entries.map(entry => entry.value);
+    let minY = Math.min(...values);
+    let maxY = Math.max(...values);
+    if (minY === maxY) {
+      const padding = metric === 'weight' ? 1 : 0.05;
+      minY = Math.max(0, minY - padding);
+      maxY += padding;
+    } else {
+      const padding = Math.max((maxY - minY) * 0.16, metric === 'weight' ? 0.5 : 0.03);
+      minY = Math.max(0, minY - padding);
+      maxY += padding;
+    }
+    const xScale = index => entries.length === 1 ? left + plotW / 2 : left + (index / (entries.length - 1)) * plotW;
+    const yScale = value => top + (1 - (value - minY) / (maxY - minY)) * plotH;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = '#17213a';
+    ctx.font = '700 34px Arial';
+    ctx.fillText(title, left, 48);
+    ctx.fillStyle = '#62708a';
+    ctx.font = '500 22px Arial';
+    ctx.fillText(`Eixo horizontal: data/idade | Eixo vertical: ${unit}`, left, 78);
+
+    ctx.strokeStyle = '#dce7f8';
+    ctx.lineWidth = 2;
+    ctx.fillStyle = '#fbfdff';
+    ctx.fillRect(left, top, plotW, plotH);
+    ctx.strokeRect(left, top, plotW, plotH);
+
+    const yTicks = Array.from({ length: 6 }, (_, index) => minY + ((maxY - minY) * index) / 5);
+    ctx.font = '500 20px Arial';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    yTicks.forEach(value => {
+      const y = yScale(value);
+      ctx.strokeStyle = '#e8f0fb';
+      ctx.beginPath();
+      ctx.moveTo(left, y);
+      ctx.lineTo(left + plotW, y);
+      ctx.stroke();
+      ctx.fillStyle = '#62708a';
+      ctx.fillText(`${formatLocaleNumber(value, metric === 'weight' ? 1 : 2)} ${unit}`, left - 14, y);
+    });
+
+    ctx.strokeStyle = '#2f6ed0';
+    ctx.lineWidth = 5;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    entries.forEach((entry, index) => {
+      const x = xScale(index), y = yScale(entry.value);
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    entries.forEach((entry, index) => {
+      const x = xScale(index), y = yScale(entry.value);
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#2f6ed0';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(x, y, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#17213a';
+      ctx.font = '700 19px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${formatLocaleNumber(entry.value, metric === 'weight' ? 2 : 2)} ${unit}`, x, Math.max(top + 22, y - 22));
+    });
+
+    ctx.fillStyle = '#62708a';
+    ctx.font = '600 18px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    entries.forEach((entry, index) => {
+      const x = xScale(index);
+      ctx.fillText(entry.label, x, top + plotH + 22);
+      if (entry.ageLabel) ctx.fillText(entry.ageLabel, x, top + plotH + 48);
+    });
+
+    ctx.save();
+    ctx.translate(28, top + plotH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = '#17213a';
+    ctx.font = '700 22px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(metric === 'weight' ? 'Peso (kg)' : 'Altura (m)', 0, 0);
+    ctx.restore();
+
+    requestAnimationFrame(() => resolve(canvas.toDataURL('image/png', 1)));
+  });
+}
+
+async function addEvolutionChartToPdf(doc, y, child, metric, options = {}) {
+  const title = options.title || (metric === 'weight' ? 'Evolução do Peso' : 'Evolução da Altura');
+  const emptyMessage = options.emptyMessage || (metric === 'weight'
+    ? 'Nenhum registro de peso disponível.'
+    : 'Nenhum registro de altura disponível.');
+  const insufficientMessage = options.insufficientMessage || (metric === 'weight'
+    ? 'Ainda não existem registros de peso suficientes para gerar o gráfico.'
+    : 'Ainda não existem registros de altura suficientes para gerar o gráfico.');
+  const entries = evolutionChartEntries(child, metric);
+  y = addSection(doc, title, y, metric === 'weight' ? [22, 110, 229] : [34, 178, 125]);
+  if (!entries.length) return addParagraph(doc, emptyMessage, y);
+  if (entries.length < 2) return addParagraph(doc, insufficientMessage, y);
+  y = ensurePage(doc, y, 92);
+  const chartDataUrl = await drawEvolutionChartToCanvas(metric, entries);
+  addImageSafe(doc, chartDataUrl, 16, y, 178, 88);
+  return y + 96;
+}
+
+function evolutionRecordText(item, child) {
+  const parts = [];
+  parts.push(formatDate(item.date));
+  parts.push(item.category);
+  const title = pdfCleanValue(item.title);
+  const value = pdfCleanValue(item.value);
+  if (title && title !== item.category) parts.push(title);
+  if (value) parts.push(value);
+  const percentile = percentileLabel(milestonePercentile(item, child));
+  if (percentile) parts.push(`Percentil ${percentile}`);
+  const description = pdfCleanValue(item.description);
+  return `• ${parts.filter(Boolean).join(' - ')}${description ? `. ${description}` : ''}`;
+}
+
+function addSelectedEvolutionPdfContent(doc, child, sections, y) {
+  if (sections.includes('fotoBio') && child.miniBio) {
+    y = addSection(doc, 'FOTO E MINI BIO', y, [134, 107, 255]);
+    y = addParagraph(doc, child.miniBio, y);
+  }
+  if (sections.includes('saude') && (child.problemas || child.alergias || child.observacoes)) {
+    y = addSection(doc, 'DADOS DE SAÚDE', y, [34, 178, 125]);
+    y = addCleanLine(doc, 'Problemas de saúde', child.problemas, y);
+    y = addCleanLine(doc, 'Alergias', child.alergias, y);
+    y = addCleanLine(doc, 'Observações gerais', child.observacoes, y);
+  }
+  if (sections.includes('medicacoes') && child.medications.length) {
+    y = addSection(doc, 'MEDICAÇÕES EM USO', y, [134, 107, 255]);
+    child.medications.forEach(item => {
+      y = addParagraph(doc, `• ${pdfJoinValues([item.nome, item.dose, item.frequencia, item.horario], ' - ')}`, y);
+    });
+  }
+  if (sections.includes('exames') && child.exams.length) {
+    y = addSection(doc, 'EXAMES', y, [255, 179, 0]);
+    child.exams.forEach(item => {
+      y = addParagraph(doc, `• ${pdfJoinValues([item.data ? formatDate(item.data) : '', item.nome, item.descricao, item.file?.name ? `Arquivo: ${item.file.name}` : ''], ' - ')}`, y);
+    });
+  }
+  if (sections.includes('arquivosMedicos') && child.medicalFiles.length) {
+    y = addSection(doc, 'ARQUIVOS MÉDICOS', y, [98, 114, 138]);
+    child.medicalFiles.forEach(item => {
+      y = addParagraph(doc, `• ${pdfJoinValues([item.date ? formatDate(item.date) : '', item.title || 'Documento', item.description, item.file?.name ? `Arquivo: ${item.file.name}` : ''], ' - ')}`, y);
+    });
+  }
+  if ((sections.includes('agenda') || sections.includes('consultas') || sections.includes('vacinas') || sections.includes('proximos')) && child.events.length) {
+    let events = [...child.events];
+    if (!sections.includes('agenda')) {
+      const filters = [];
+      if (sections.includes('consultas')) filters.push('Consulta médica');
+      if (sections.includes('vacinas')) filters.push('Vacina');
+      events = events.filter(item => filters.includes(item.type));
+    }
+    if (sections.includes('proximos')) {
+      const today = new Date().toISOString().slice(0,10);
+      events = events.filter(item => !item.date || item.date >= today);
+    }
+    if (events.length) {
+      y = addSection(doc, 'CALENDÁRIO/AGENDA', y, [255, 179, 0]);
+      events.sort((a,b) => (a.date || '').localeCompare(b.date || '')).forEach(item => {
+        y = addParagraph(doc, `• ${pdfJoinValues([item.date ? formatDate(item.date) : '', item.time, item.type || 'Evento', item.title, item.location ? `Local: ${item.location}` : '', item.description], ' - ')}`, y);
+      });
+    }
+  }
+  if (sections.includes('memoriasFavoritas')) {
+    const memories = child.memories.filter(item => item.favorite).slice(0, 12);
+    if (memories.length) {
+      y = addSection(doc, 'MEMÓRIAS FAVORITAS/PRINCIPAIS', y, [255, 111, 174]);
+      memories.forEach(item => {
+        y = addParagraph(doc, `• ${pdfJoinValues([item.date ? formatDate(item.date) : '', item.title || 'Memória', item.description], ' - ')}`, y);
+      });
+    }
+  }
+  return y;
+}
+
 async function generateEvolutionPdf() {
   const doc = getPdf();
   if (!doc) return;
   const child = currentChild();
-  if (!child.milestones.length) return showToast('Nenhum registro em Marcos & Evolução.');
-  let y = await addPdfHeader(doc, 'Evolução e Marcos', childDisplayName(child));
-  if (child.profilePhoto) {
-    await addImageSafeForPdf(doc, fileRefUrl(child.profilePhoto), 156, 42, 38, 38);
-  }
-  const grouped = child.milestones.reduce((acc, m) => ((acc[m.category] ||= []).push(m), acc), {});
-  Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).forEach(([category, items]) => {
-    y = addSection(doc, category, y, [34, 178, 125]);
-    const sorted = items.sort((a,b) => (a.date || '').localeCompare(b.date || ''));
-    sorted.forEach(item => {
-      const pct = percentileLabel(milestonePercentile(item, child));
-      y = addParagraph(doc, `• ${formatDate(item.date)} - ${item.title || category}${item.value ? ': ' + item.value : ''}${pct ? ' — Percentil ' + pct : ''}. ${item.description || ''}`, y);
-      if (item.photo) {
-        y = ensurePage(doc, y, 42);
-        addImageSafe(doc, fileRefUrl(item.photo), 20, y, 52, 36);
-        y += 42;
-      }
+  const sections = selectedPdfSections();
+  let y = 18;
+
+  const logo = await getAppLogoDataUrl();
+  if (logo) addImageSafe(doc, logo, 14, 12, 18, 18);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(22, 110, 229);
+  doc.setFontSize(18);
+  doc.text('Crescer Juntos', 36, 20);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(23, 33, 58);
+  doc.setFontSize(9.5);
+  doc.text(`Gerado em ${new Date().toLocaleDateString('pt-BR')}`, 196, 20, { align: 'right' });
+  doc.setDrawColor(22, 110, 229);
+  doc.setLineWidth(0.7);
+  doc.line(14, 34, 196, 34);
+
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(222, 234, 248);
+  doc.roundedRect(14, 42, 182, 46, 6, 6, 'FD');
+  if (logo) addImageSafe(doc, logo, 18, 48, 28, 28);
+  doc.setTextColor(23, 33, 58);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(17);
+  doc.text('Resumo da Evolução', 54, 56);
+  doc.setTextColor(22, 110, 229);
+  doc.setFontSize(22);
+  doc.text(childDisplayName(child), 54, 69);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(98, 112, 138);
+  doc.setFontSize(9.5);
+  doc.text(`Gerado em ${new Date().toLocaleDateString('pt-BR')}`, 54, 80);
+  y = 98;
+
+  y = addEvolutionChildData(doc, child, y);
+  y = addSelectedEvolutionPdfContent(doc, child, sections, y);
+  y = await addEvolutionChartToPdf(doc, y, child, 'weight');
+  y = await addEvolutionChartToPdf(doc, y, child, 'height');
+
+  y = addSection(doc, 'REGISTROS DE EVOLUÇÃO', y, [34, 178, 125]);
+  if (!child.milestones.length) {
+    y = addParagraph(doc, 'Nenhum registro em Marcos & Evolução cadastrado.', y);
+  } else {
+    const grouped = child.milestones.reduce((acc, item) => ((acc[item.category || 'Outros'] ||= []).push(item), acc), {});
+    Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).forEach(([category, items]) => {
+      y = addSection(doc, category, y, [98, 114, 138]);
+      items.sort((a,b) => (a.date || '').localeCompare(b.date || '')).forEach(item => {
+        y = addParagraph(doc, evolutionRecordText(item, child), y);
+        if (item.photo) {
+          y = ensurePage(doc, y, 42);
+          addImageSafe(doc, fileRefUrl(item.photo), 20, y, 52, 36);
+          y += 42;
+        }
+      });
     });
-    const numericValues = sorted.map(item => parseFloat(String(item.value || '').replace(',', '.'))).filter(n => !Number.isNaN(n));
-    if (numericValues.length) {
-      const first = numericValues[0];
-      const last = numericValues[numericValues.length - 1];
-      y = addParagraph(doc, `Estatística simples: primeiro valor ${first}; último valor ${last}; variação ${Number((last - first).toFixed(2))}.`, y);
-    }
-  });
-  addPdfFooter(doc, 'Evolução e Marcos');
+  }
+
+  addPdfFooter(doc, 'Resumo da Evolução');
   doc.save(`resumo-evolutivo-${safeFileName(childDisplayName(child))}.pdf`);
   showToast('Resumo Evolutivo criado.');
 }
