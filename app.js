@@ -437,6 +437,27 @@ function fileRefThumbnail(ref) {
   return ref && typeof ref === 'object' ? (ref.thumbnail || '') : '';
 }
 
+function fileExtension(file = {}) {
+  return String(file.name || '').split('.').pop()?.toLowerCase() || '';
+}
+
+function isImageFile(file) {
+  const type = String(file?.type || '').toLowerCase();
+  const ext = fileExtension(file);
+  return type.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(ext);
+}
+
+function isPdfFile(file) {
+  const type = String(file?.type || '').toLowerCase();
+  return type === 'application/pdf' || fileExtension(file) === 'pdf';
+}
+
+function fileTypeLabel(file) {
+  if (isPdfFile(file)) return 'PDF';
+  if (isImageFile(file)) return 'Imagem';
+  return (fileExtension(file) || file?.type || 'Arquivo').toUpperCase();
+}
+
 function openExamDb() {
   return new Promise((resolve, reject) => {
     if (!('indexedDB' in window)) return reject(new Error('IndexedDB não disponível'));
@@ -860,11 +881,11 @@ async function renderExams() {
     return;
   }
   list.innerHTML = child.exams.map(e => {
-    const file = e.file;
-    const fileInfo = file
-      ? `<small>${escapeHtml(file.name || 'Arquivo')} • ${escapeHtml(file.type || 'tipo não informado')} • ${formatFileSize(file.size)}</small>`
+    const files = examAttachments(e);
+    const fileInfo = files.length
+      ? `<div class="exam-attachment-list">${files.map(file => renderExamAttachmentCard(e.id, file)).join('')}</div>`
       : '<small>Sem anexo</small>';
-    const fileActions = file ? `
+    const fileActions = files.length ? `
       <div class="actions inline-actions">
         <button type="button" class="secondary" onclick="viewExamAttachment('${e.id}')">Visualizar</button>
         <button type="button" class="secondary" onclick="downloadExamAttachment('${e.id}')">Baixar</button>
@@ -890,6 +911,34 @@ async function renderExams() {
   }).join('');
 }
 
+function examAttachments(exam) {
+  if (Array.isArray(exam?.files)) return exam.files.filter(Boolean);
+  return exam?.file ? [exam.file] : [];
+}
+
+function examAttachmentById(exam, fileId = '') {
+  const files = examAttachments(exam);
+  return fileId ? files.find(file => file.id === fileId) || files[0] : files[0];
+}
+
+function renderExamAttachmentCard(examId, file) {
+  const name = escapeHtml(file.name || 'Arquivo anexado');
+  const meta = `${escapeHtml(fileTypeLabel(file))} • ${escapeHtml(formatFileSize(file.size))}`;
+  if (isImageFile(file)) {
+    return `
+      <button type="button" class="exam-attachment-card" onclick="viewExamAttachment('${examId}','${file.id || ''}')">
+        <span class="exam-thumb image-thumb"><img src="${fileRefUrl(file)}" alt="${name}" onerror="this.closest('.exam-thumb').classList.add('thumb-error'); this.remove();" /></span>
+        <span class="exam-file-info"><strong>${name}</strong><small>${meta}</small></span>
+      </button>`;
+  }
+  const icon = isPdfFile(file) ? 'PDF' : 'DOC';
+  return `
+    <button type="button" class="exam-attachment-card" onclick="viewExamAttachment('${examId}','${file.id || ''}')">
+      <span class="exam-thumb file-thumb">${escapeHtml(icon)}</span>
+      <span class="exam-file-info"><strong>${name}</strong><small>${meta}</small></span>
+    </button>`;
+}
+
 function formatFileSize(bytes) {
   const value = Number(bytes || 0);
   if (!value) return 'tamanho não informado';
@@ -898,10 +947,12 @@ function formatFileSize(bytes) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-window.viewExamAttachment = async function(examId) {
+window.viewExamAttachment = async function(examId, fileId = '') {
   const exam = currentChild().exams.find(item => item.id === examId);
-  if (!exam?.file) return showToast('Este exame não possui anexo.');
-  const blob = await getExamAttachmentBlob(exam.file);
+  const file = examAttachmentById(exam, fileId);
+  if (!file) return showToast('Este exame não possui anexo.');
+  if (isImageFile(file)) return openExamImageViewer(file);
+  const blob = await getExamAttachmentBlob(file);
   if (!blob) return showToast('Não foi possível recuperar o arquivo.');
   const url = URL.createObjectURL(blob);
   const opened = window.open(url, '_blank', 'noopener');
@@ -914,20 +965,73 @@ window.viewExamAttachment = async function(examId) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 };
 
-window.downloadExamAttachment = async function(examId) {
+window.downloadExamAttachment = async function(examId, fileId = '') {
   const exam = currentChild().exams.find(item => item.id === examId);
-  if (!exam?.file) return showToast('Este exame não possui anexo.');
-  const blob = await getExamAttachmentBlob(exam.file);
+  const file = examAttachmentById(exam, fileId);
+  if (!file) return showToast('Este exame não possui anexo.');
+  const blob = await getExamAttachmentBlob(file);
   if (!blob) return showToast('Não foi possível recuperar o arquivo.');
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = exam.file.name || 'arquivo-do-exame';
+  link.download = file.name || 'arquivo-do-exame';
   document.body.appendChild(link);
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 };
+
+async function openExamImageViewer(file) {
+  const modal = $('examAttachmentModal');
+  const image = $('examAttachmentViewerImage');
+  const message = $('examAttachmentViewerMessage');
+  const download = $('downloadExamAttachmentFromViewer');
+  if (!modal || !image || !message) return;
+  modal.classList.remove('hidden');
+  image.classList.add('hidden');
+  image.removeAttribute('src');
+  image.alt = file.name || 'Imagem do exame';
+  message.textContent = 'Carregando anexo...';
+  if (download) download.onclick = () => downloadExamAttachmentByFile(file);
+  try {
+    const dataUrl = await resolvePersistentAssetDataUrl(file);
+    if (!dataUrl) throw new Error('Anexo indisponível');
+    image.onload = () => {
+      message.textContent = '';
+      image.classList.remove('hidden');
+    };
+    image.onerror = () => {
+      image.classList.add('hidden');
+      message.textContent = 'Não foi possível carregar este anexo.';
+    };
+    image.src = dataUrl;
+  } catch (error) {
+    console.warn(error);
+    message.textContent = 'Não foi possível carregar este anexo.';
+  }
+}
+
+async function downloadExamAttachmentByFile(file) {
+  const blob = await getExamAttachmentBlob(file);
+  if (!blob) return showToast('Não foi possível recuperar o arquivo.');
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = file.name || 'arquivo-do-exame';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function closeExamAttachmentModal() {
+  const image = $('examAttachmentViewerImage');
+  if (image) {
+    image.removeAttribute('src');
+    image.classList.add('hidden');
+  }
+  $('examAttachmentModal')?.classList.add('hidden');
+}
 
 window.editExam = function(examId) {
   const exam = currentChild().exams.find(item => item.id === examId);
@@ -2203,6 +2307,10 @@ function addFormListeners() {
   $('photoModal').addEventListener('click', event => {
     if (event.target.id === 'photoModal') closePhotoModal();
   });
+  $('closeExamAttachmentModal')?.addEventListener('click', closeExamAttachmentModal);
+  $('examAttachmentModal')?.addEventListener('click', event => {
+    if (event.target.id === 'examAttachmentModal') closeExamAttachmentModal();
+  });
 
   $('closeMemoryViewer')?.addEventListener('click', closeMemoryViewer);
   $('prevMemoryAsset')?.addEventListener('click', () => moveMemoryAsset(-1));
@@ -2487,6 +2595,30 @@ function childDisplayName(child) {
   return child.nome ? `${child.nome} ${child.sobrenome || ''}`.trim() : 'Criança sem nome';
 }
 
+async function addExamAttachmentToChildPdf(doc, file, y) {
+  if (!file) return y;
+  const name = file.name || 'arquivo-do-exame';
+  if (isImageFile(file)) {
+    y = ensurePage(doc, y, 96);
+    try {
+      const dataUrl = await resolvePersistentAssetDataUrl(file);
+      if (!dataUrl) throw new Error('Anexo indisponível');
+      doc.setTextColor(98, 112, 138);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.text(`Imagem anexada: ${name}`, 20, y);
+      y += 5;
+      const image = await addImageSafeForPdf(doc, dataUrl, 20, y, 170, 82);
+      return y + Math.max(14, image.h) + 8;
+    } catch (error) {
+      console.warn('Não foi possível carregar anexo do exame no PDF.', error);
+      return addParagraph(doc, 'Não foi possível carregar este anexo.', y);
+    }
+  }
+  if (isPdfFile(file)) return addParagraph(doc, `Arquivo PDF anexado: ${name}`, y);
+  return addParagraph(doc, `${fileTypeLabel(file)} anexado: ${name}`, y);
+}
+
 async function generateSelectedChildPdf() {
   const doc = getPdf();
   if (!doc) return;
@@ -2558,7 +2690,10 @@ async function generateSelectedChildPdf() {
   if (sections.includes('exames')) {
     y = addSection(doc, 'EXAMES', y, [255, 179, 0]);
     if (!child.exams.length) y = addParagraph(doc, 'Nenhum exame cadastrado.', y);
-    child.exams.forEach(e => y = addParagraph(doc, `• ${formatDate(e.data)} - ${e.nome || ''}. ${e.descricao || ''} ${e.file ? 'Arquivo: ' + e.file.name : ''}`, y));
+    for (const exam of child.exams) {
+      y = addParagraph(doc, `• ${[formatDate(exam.data), exam.nome, exam.descricao].filter(Boolean).join(' - ')}`, y);
+      for (const file of examAttachments(exam)) y = await addExamAttachmentToChildPdf(doc, file, y);
+    }
   }
 
   if (sections.includes('arquivosMedicos')) {

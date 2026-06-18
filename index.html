@@ -11,11 +11,11 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/favicon.png" />
-  <link rel="stylesheet" href="styles.css?v=29" />
+  <link rel="stylesheet" href="styles.css?v=30" />
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script defer src="growth-reference.js"></script>
-  <script defer src="app.js?v=29"></script>
+  <script defer src="app.js?v=30"></script>
 </head>
 <body>
   <header class="app-header">
@@ -569,6 +569,17 @@
     <div class="modal-card photo-modal-card">
       <button type="button" id="closePhotoModal" class="modal-close">Fechar</button>
       <img id="memoryPhotoViewer" alt="Foto da memória" />
+    </div>
+  </div>
+
+  <div id="examAttachmentModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Visualização de anexo do exame">
+    <div class="modal-card exam-attachment-modal-card">
+      <button type="button" id="closeExamAttachmentModal" class="modal-close">Fechar</button>
+      <div id="examAttachmentViewerMessage" class="exam-attachment-viewer-message"></div>
+      <img id="examAttachmentViewerImage" class="hidden" alt="Imagem anexada ao exame" />
+      <div class="actions">
+        <button type="button" id="downloadExamAttachmentFromViewer" class="secondary">Baixar</button>
+      </div>
     </div>
   </div>
 
