@@ -1,25 +1,25 @@
-const CACHE_NAME = 'crescer-juntos-v30-cache';
+const CACHE_NAME = 'crescer-juntos-v31-cache';
 const CORE_ASSETS = [
   './',
   './index.html',
-  './styles.css?v=30',
-  './app.js?v=30',
-  './growth-reference.js?v=30',
-  './manifest.json?v=30',
+  './styles.css?v=31',
+  './app.js?v=31',
+  './growth-reference.js?v=31',
+  './manifest.json?v=31',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
   './icons/logo-main.png',
-  './themes/masculino/bebe.png',
-  './themes/masculino/primeira-infancia.png',
-  './themes/masculino/infancia.png',
-  './themes/masculino/pre-adolescencia.png',
-  './themes/masculino/adolescencia.png',
-  './themes/feminino/bebe.png',
-  './themes/feminino/primeira-infancia.png',
-  './themes/feminino/infancia.png',
-  './themes/feminino/pre-adolescencia.png',
-  './themes/feminino/adolescencia.png'
+  './themes/masculino/bebe.png?v=2',
+  './themes/masculino/primeira-infancia.png?v=2',
+  './themes/masculino/infancia.png?v=2',
+  './themes/masculino/pre-adolescencia.png?v=2',
+  './themes/masculino/adolescencia.png?v=2',
+  './themes/feminino/bebe.png?v=2',
+  './themes/feminino/primeira-infancia.png?v=2',
+  './themes/feminino/infancia.png?v=2',
+  './themes/feminino/pre-adolescencia.png?v=2',
+  './themes/feminino/adolescencia.png?v=2'
 ];
 
 self.addEventListener('install', event => {

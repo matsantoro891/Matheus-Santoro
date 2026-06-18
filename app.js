@@ -235,25 +235,24 @@ function applyTheme() {
   document.body.dataset.themeMode = 'padrao';
   delete document.body.dataset.themeGender;
   delete document.body.dataset.themeStage;
-  const heroArt = $('themeHeroArt');
-  if (heroArt) {
-    heroArt.classList.add('hidden');
-    heroArt.removeAttribute('src');
+  const hero = document.querySelector('.home-hero');
+  if (hero) {
+    hero.style.removeProperty('--theme-bg');
     if (theme.image) {
+      const versionedImage = `${theme.image}?v=2`;
       const image = new Image();
       image.onload = () => {
         if (token !== themeLoadToken) return;
-        heroArt.src = theme.image;
-        heroArt.classList.remove('hidden');
+        hero.style.setProperty('--theme-bg', `url("${versionedImage}")`);
         document.body.dataset.themeMode = 'decorativo';
         document.body.dataset.themeGender = theme.gender;
         document.body.dataset.themeStage = theme.stage;
       };
       image.onerror = () => {
         if (token !== themeLoadToken) return;
-        console.warn(`Tema não carregado: ${theme.image}`);
+        console.warn(`Tema não carregado: ${versionedImage}`);
       };
-      image.src = theme.image;
+      image.src = versionedImage;
     }
   }
   const hint = $('themeHint');
