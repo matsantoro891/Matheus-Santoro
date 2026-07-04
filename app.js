@@ -56,7 +56,7 @@ function emptyChild() {
     emergenciaNome: '', emergenciaTelefone: '', pediatraNome: '', pediatraTelefone: '', pediatraEmail: '', clinicaPediatra: '',
     observacoes: '', miniBio: '', profilePhoto: '',
     themeMode: 'auto', themeGender: 'masculino', themeStage: 'bebe',
-    medications: [], exams: [], medicalFiles: [], memories: [], albums: [], events: [], milestones: []
+    medications: [], exams: [], medicalFiles: [], memories: [], albums: [], events: [], milestones: [], letters: []
   };
 }
 
@@ -111,6 +111,7 @@ function normalizeChild(child) {
   child.albums ||= [];
   child.events ||= [];
   child.milestones ||= [];
+  child.letters ||= [];
   child.profilePhoto ||= '';
   child.miniBio ||= '';
   if (!['auto', 'manual', 'default'].includes(child.themeMode)) child.themeMode = 'auto';
@@ -128,6 +129,17 @@ function normalizeChild(child) {
       thumbnail: asset.thumbnail || '',
       createdAt: asset.createdAt || new Date().toISOString()
     }));
+  });
+  child.letters.forEach(letter => {
+    letter.id = letter.id || uid();
+    letter.childId = letter.childId || child.id;
+    letter.userId = letter.userId || '';
+    letter.date = letter.date || '';
+    letter.theme = letter.theme || '';
+    letter.text = letter.text || '';
+    letter.createdAt = letter.createdAt || new Date().toISOString();
+    letter.updatedAt = letter.updatedAt || letter.createdAt;
+    if (letter.audioFile && typeof letter.audioFile !== 'object') letter.audioFile = null;
   });
 }
 
@@ -303,6 +315,7 @@ function switchTab(tabId, opts = {}) {
   qsa('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tabId));
   qsa('.bottom-nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tabTarget === tabId));
   qsa('.home-nav-card').forEach(btn => btn.classList.toggle('active-card', btn.dataset.tabTarget === tabId));
+  if (tabId === 'cartas' && !opts.letterView) showLettersListView();
   if (opts.closeMenu) closeSideMenu();
   if (opts.scroll !== false) {
     requestAnimationFrame(() => {
@@ -591,6 +604,16 @@ async function hydrateAllLocalFiles(targetState = state) {
     for (const milestone of child.milestones || []) {
       if (milestone.photo) milestone.photo = await hydrateLocalFileRef(milestone.photo, { kind: 'milestone', childId: child.id, parentId: milestone.id, name: 'foto-evolucao' });
     }
+    for (const letter of child.letters || []) {
+      if (letter.audioFile) {
+        letter.audioFile = await hydrateLocalFileRef(letter.audioFile, {
+          kind: 'letter-audio',
+          childId: child.id,
+          parentId: letter.id,
+          name: letter.audioFile.name || 'audio-carta.webm'
+        });
+      }
+    }
   }
   return changed;
 }
@@ -646,6 +669,13 @@ async function resolvePersistentAssetDataUrl(ref) {
 }
 
 let memoryViewerImageLoadToken = 0;
+let letterRecorder = null;
+let letterRecordingChunks = [];
+let letterRecordingStream = null;
+let letterDraftAudioBlob = null;
+let letterDraftAudioUrl = '';
+let letterRemoveExistingAudio = false;
+let letterDetailId = '';
 
 function preparePersistentImageElement(container, asset, loadToken) {
   container.innerHTML = '';
@@ -706,6 +736,7 @@ async function deleteFilesForItem(collection, item) {
     for (const asset of item.files || []) await deleteLocalFileRef(asset);
   }
   if (collection === 'milestones') await deleteLocalFileRef(item.photo);
+  if (collection === 'letters') await deleteLocalFileRef(item.audioFile);
 }
 
 async function deleteFilesForChild(child) {
@@ -715,6 +746,7 @@ async function deleteFilesForChild(child) {
   for (const item of child.medicalFiles || []) await deleteLocalFileRef(item.file);
   for (const memory of child.memories || []) for (const asset of memory.files || []) await deleteLocalFileRef(asset);
   for (const milestone of child.milestones || []) await deleteLocalFileRef(milestone.photo);
+  for (const letter of child.letters || []) await deleteLocalFileRef(letter.audioFile);
 }
 
 async function fileToMemoryAsset(file, existingId = '', extra = {}) {
@@ -1633,6 +1665,278 @@ function renderEvents() {
   `).join('') : '<p class="muted">Nenhum evento cadastrado.</p>';
 }
 
+function letterExcerpt(text = '', maxLength = 120) {
+  const clean = String(text || '').trim();
+  if (!clean) return 'Carta sem texto ainda.';
+  return clean.length <= maxLength ? clean : `${clean.slice(0, maxLength).trim()}…`;
+}
+
+function childLetters() {
+  return [...(currentChild().letters || [])].sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+}
+
+function letterById(id) {
+  return currentChild().letters.find(letter => letter.id === id) || null;
+}
+
+function showLettersListView() {
+  $('lettersListView')?.classList.remove('hidden');
+  $('letterFormView')?.classList.add('hidden');
+  $('letterDetailView')?.classList.add('hidden');
+  stopLetterRecording(true);
+  resetLetterDraftAudio();
+}
+
+function showLetterFormView(letterId = '') {
+  $('lettersListView')?.classList.add('hidden');
+  $('letterFormView')?.classList.remove('hidden');
+  $('letterDetailView')?.classList.add('hidden');
+  resetLetterDraftAudio();
+  letterRemoveExistingAudio = false;
+  const form = $('letterForm');
+  if (!form) return;
+  form.reset();
+  form.elements.letterId.value = letterId || '';
+  $('letterFormTitle').textContent = letterId ? 'Editar carta' : 'Nova carta';
+  form.elements.date.value = new Date().toISOString().slice(0, 10);
+  const existingAudio = $('letterExistingAudio');
+  const removeAudioBtn = $('letterRemoveAudioBtn');
+  existingAudio?.classList.add('hidden');
+  removeAudioBtn?.classList.add('hidden');
+  if (existingAudio) existingAudio.removeAttribute('src');
+  if (letterId) {
+    const letter = letterById(letterId);
+    if (!letter) return showLettersListView();
+    form.elements.date.value = letter.date || '';
+    form.elements.theme.value = letter.theme || '';
+    form.elements.text.value = letter.text || '';
+    if (letter.audioFile && !letterRemoveExistingAudio) {
+      setLetterAudioPlayer(existingAudio, letter.audioFile);
+      removeAudioBtn?.classList.remove('hidden');
+    }
+  }
+  updateLetterRecordingUi(false);
+}
+
+async function showLetterDetailView(letterId) {
+  const letter = letterById(letterId);
+  if (!letter) return showToast('Carta não encontrada.');
+  letterDetailId = letterId;
+  $('lettersListView')?.classList.add('hidden');
+  $('letterFormView')?.classList.add('hidden');
+  $('letterDetailView')?.classList.remove('hidden');
+  $('letterDetailDate').textContent = formatDate(letter.date);
+  $('letterDetailTheme').textContent = letter.theme || 'Carta especial';
+  $('letterDetailText').textContent = letter.text || 'Esta carta ainda não possui texto.';
+  const hasAudio = Boolean(letter.audioFile);
+  $('letterDetailAudioBadge')?.classList.toggle('hidden', !hasAudio);
+  await setLetterAudioPlayer($('letterDetailAudio'), hasAudio ? letter.audioFile : null);
+}
+
+function resetLetterDraftAudio() {
+  if (letterDraftAudioUrl) URL.revokeObjectURL(letterDraftAudioUrl);
+  letterDraftAudioUrl = '';
+  letterDraftAudioBlob = null;
+  letterRecordingChunks = [];
+  const preview = $('letterPreviewAudio');
+  if (preview) {
+    preview.classList.add('hidden');
+    preview.removeAttribute('src');
+  }
+  const status = $('letterRecordingStatus');
+  if (status) {
+    status.textContent = '';
+    status.classList.remove('is-recording');
+  }
+}
+
+function getSupportedLetterAudioMimeType() {
+  if (typeof MediaRecorder === 'undefined') return '';
+  const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/ogg'];
+  return types.find(type => MediaRecorder.isTypeSupported(type)) || '';
+}
+
+function updateLetterRecordingUi(isRecording) {
+  $('letterRecordStartBtn')?.toggleAttribute('disabled', isRecording);
+  $('letterRecordStopBtn')?.toggleAttribute('disabled', !isRecording);
+  const status = $('letterRecordingStatus');
+  if (!status) return;
+  status.textContent = isRecording ? 'Gravando...' : (letterDraftAudioBlob ? 'Áudio pronto para ouvir.' : '');
+  status.classList.toggle('is-recording', isRecording);
+}
+
+async function setLetterAudioPlayer(audioEl, audioRef) {
+  if (!audioEl) return;
+  if (!audioRef) {
+    audioEl.classList.add('hidden');
+    audioEl.removeAttribute('src');
+    return;
+  }
+  const dataUrl = await resolvePersistentAssetDataUrl(audioRef);
+  if (dataUrl) {
+    audioEl.src = dataUrl;
+    audioEl.classList.remove('hidden');
+  } else {
+    audioEl.classList.add('hidden');
+    audioEl.removeAttribute('src');
+  }
+}
+
+async function startLetterRecording() {
+  if (!navigator.mediaDevices?.getUserMedia) return showToast('Este dispositivo não suporta gravação de áudio.');
+  if (letterRecorder && letterRecorder.state === 'recording') return;
+  try {
+    stopLetterRecording(true);
+    resetLetterDraftAudio();
+    letterRemoveExistingAudio = true;
+    $('letterExistingAudio')?.classList.add('hidden');
+    $('letterRemoveAudioBtn')?.classList.add('hidden');
+    letterRecordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mimeType = getSupportedLetterAudioMimeType();
+    letterRecordingChunks = [];
+    letterRecorder = mimeType ? new MediaRecorder(letterRecordingStream, { mimeType }) : new MediaRecorder(letterRecordingStream);
+    letterRecorder.addEventListener('dataavailable', event => {
+      if (event.data?.size) letterRecordingChunks.push(event.data);
+    });
+    letterRecorder.addEventListener('stop', () => {
+      const type = letterRecorder?.mimeType || mimeType || 'audio/webm';
+      letterDraftAudioBlob = new Blob(letterRecordingChunks, { type });
+      letterDraftAudioUrl = createRuntimeObjectUrl(letterDraftAudioBlob);
+      const preview = $('letterPreviewAudio');
+      if (preview) {
+        preview.src = letterDraftAudioUrl;
+        preview.classList.remove('hidden');
+      }
+      updateLetterRecordingUi(false);
+      stopLetterRecording(false);
+    });
+    letterRecorder.start();
+    updateLetterRecordingUi(true);
+  } catch (error) {
+    console.error(error);
+    stopLetterRecording(true);
+    showToast('Não foi possível iniciar a gravação. Verifique a permissão do microfone.');
+  }
+}
+
+function stopLetterRecording(closeStream = true) {
+  if (letterRecorder && letterRecorder.state !== 'inactive') {
+    try { letterRecorder.stop(); } catch {}
+  }
+  letterRecorder = null;
+  if (closeStream && letterRecordingStream) {
+    letterRecordingStream.getTracks().forEach(track => track.stop());
+    letterRecordingStream = null;
+  }
+}
+
+async function storeLetterAudioBlob(blob, existingRef = null, letterId = '') {
+  if (!blob) return null;
+  const child = currentChild();
+  const extension = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm';
+  const file = new File([blob], `carta-audio.${extension}`, { type: blob.type || 'audio/webm' });
+  return storeLocalFile(file, existingRef?.id || '', {
+    kind: 'letter-audio',
+    childId: child.id,
+    parentId: letterId,
+    name: file.name
+  });
+}
+
+async function saveLetterFromForm(includeAudio = true) {
+  const form = $('letterForm');
+  if (!form) return;
+  const data = Object.fromEntries(new FormData(form).entries());
+  const text = String(data.text || '').trim();
+  const theme = String(data.theme || '').trim();
+  if (!data.date) return showToast('Informe a data da carta.');
+  if (!text && !theme) return showToast('Escreva a carta ou informe um tema.');
+  const child = currentChild();
+  const existingId = data.letterId || '';
+  const now = new Date().toISOString();
+  let letter = existingId ? letterById(existingId) : null;
+  if (existingId && !letter) return showToast('Carta não encontrada.');
+  if (!letter) {
+    letter = {
+      id: uid(),
+      childId: child.id,
+      userId: '',
+      date: data.date,
+      theme,
+      text,
+      audioFile: null,
+      createdAt: now,
+      updatedAt: now
+    };
+    child.letters.push(letter);
+  } else {
+    letter.date = data.date;
+    letter.theme = theme;
+    letter.text = text;
+    letter.updatedAt = now;
+  }
+  if (includeAudio && letterDraftAudioBlob) {
+    if (letter.audioFile) await deleteLocalFileRef(letter.audioFile);
+    letter.audioFile = await storeLetterAudioBlob(letterDraftAudioBlob, null, letter.id);
+  } else if (letterRemoveExistingAudio || !includeAudio) {
+    if (letter.audioFile) await deleteLocalFileRef(letter.audioFile);
+    letter.audioFile = null;
+  }
+  saveState();
+  resetLetterDraftAudio();
+  showLettersListView();
+  renderLetters();
+  showToast(existingId ? 'Carta atualizada.' : 'Carta salva.');
+}
+
+function renderLetters() {
+  const list = $('letterList');
+  if (!list) return;
+  const letters = childLetters();
+  if (!letters.length) {
+    list.innerHTML = '<p class="muted">Nenhuma carta escrita ainda. Toque em “Nova carta” para começar.</p>';
+    return;
+  }
+  list.innerHTML = letters.map(letter => `
+    <article class="letter-card">
+      <div class="letter-card-head">
+        <span class="letter-card-date">${formatDate(letter.date)}</span>
+        ${letter.audioFile ? '<span class="letter-audio-badge">🎙️ Áudio</span>' : ''}
+      </div>
+      <h4 class="letter-card-theme">${escapeHtml(letter.theme || 'Carta especial')}</h4>
+      <p class="letter-card-excerpt">${escapeHtml(letterExcerpt(letter.text))}</p>
+      <div class="letter-card-actions">
+        <button type="button" class="secondary" onclick="openLetter('${letter.id}')">Abrir</button>
+        <button type="button" class="secondary" onclick="editLetter('${letter.id}')">Editar</button>
+        <button type="button" class="danger" onclick="deleteLetter('${letter.id}')">Excluir</button>
+      </div>
+    </article>
+  `).join('');
+}
+
+window.openLetter = function(letterId) {
+  switchTab('cartas', { letterView: true });
+  showLetterDetailView(letterId);
+};
+
+window.editLetter = function(letterId) {
+  switchTab('cartas', { letterView: true });
+  showLetterFormView(letterId);
+};
+
+window.deleteLetter = async function(letterId) {
+  if (!await confirmUserChoice('Deseja realmente excluir esta carta?')) return;
+  const child = currentChild();
+  const letter = letterById(letterId);
+  if (!letter) return;
+  await deleteFilesForItem('letters', letter);
+  child.letters = child.letters.filter(item => item.id !== letterId);
+  saveState();
+  if (letterDetailId === letterId) showLettersListView();
+  renderLetters();
+  showToast('Carta excluída.');
+};
+
 function childSexKey(child = currentChild()) {
   const sex = String(child.sexo || '').toLowerCase();
   if (sex.includes('femin')) return 'female';
@@ -1979,7 +2283,11 @@ window.removeItem = async function(collection, id) {
   const child = currentChild();
   if (!Array.isArray(child[collection])) return;
   const item = child[collection].find(record => record.id === id);
-  const message = collection === 'memories' ? 'Deseja realmente excluir esta memória?' : 'Deseja realmente excluir este item?';
+  const message = collection === 'memories'
+    ? 'Deseja realmente excluir esta memória?'
+    : collection === 'letters'
+      ? 'Deseja realmente excluir esta carta?'
+      : 'Deseja realmente excluir este item?';
   if (!await confirmUserChoice(message)) return;
   await deleteFilesForItem(collection, item);
   child[collection] = child[collection].filter(record => record.id !== id);
@@ -2002,6 +2310,7 @@ function renderAll() {
   renderFavorites();
   renderProfileSettings();
   renderEvents();
+  renderLetters();
   populateMilestoneCategories();
   renderGrowthCharts();
   renderMilestones();
@@ -2215,6 +2524,35 @@ function addFormListeners() {
     showToast('Evento adicionado.');
   });
 
+  $('newLetterBtn')?.addEventListener('click', () => {
+    switchTab('cartas', { letterView: true });
+    showLetterFormView();
+  });
+  $('letterFormCancelBtn')?.addEventListener('click', () => showLettersListView());
+  $('letterForm')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    await saveLetterFromForm(true);
+  });
+  $('letterSaveWithoutAudioBtn')?.addEventListener('click', async () => {
+    await saveLetterFromForm(false);
+  });
+  $('letterRecordStartBtn')?.addEventListener('click', () => startLetterRecording());
+  $('letterRecordStopBtn')?.addEventListener('click', () => stopLetterRecording(true));
+  $('letterRemoveAudioBtn')?.addEventListener('click', () => {
+    letterRemoveExistingAudio = true;
+    $('letterExistingAudio')?.classList.add('hidden');
+    $('letterRemoveAudioBtn')?.classList.add('hidden');
+    resetLetterDraftAudio();
+    showToast('O áudio será removido ao salvar.');
+  });
+  $('letterDetailBackBtn')?.addEventListener('click', () => showLettersListView());
+  $('letterDetailEditBtn')?.addEventListener('click', () => {
+    if (letterDetailId) showLetterFormView(letterDetailId);
+  });
+  $('letterDetailDeleteBtn')?.addEventListener('click', () => {
+    if (letterDetailId) deleteLetter(letterDetailId);
+  });
+
   $('notifyBtn').addEventListener('click', async () => {
     if (!('Notification' in window)) return showToast('Este navegador não suporta notificações.');
     const permission = await Notification.requestPermission();
@@ -2417,6 +2755,9 @@ async function exportBackup() {
     }
     for (let index = 0; index < (originalChild.milestones || []).length; index += 1) {
       backupChild.milestones[index].photo = await fileRefForBackup(originalChild.milestones[index].photo, 'foto-evolucao');
+    }
+    for (let index = 0; index < (originalChild.letters || []).length; index += 1) {
+      backupChild.letters[index].audioFile = await fileRefForBackup(originalChild.letters[index].audioFile, 'audio-carta');
     }
   }
   const content = JSON.stringify({ exportedAt: new Date().toISOString(), app: 'cReScer juntos', version: 5, state: exportState }, null, 2);

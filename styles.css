@@ -1316,3 +1316,136 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
   .compact-edit-btn,
   .compact-delete-btn { width: auto; }
 }
+
+.letters-head p {
+  color: #6f7f9f;
+  font-weight: 600;
+}
+.letters-top-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+.letters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+.letter-card {
+  background: linear-gradient(180deg, #fff 0%, #fff9fc 100%);
+  border: 1px solid #f0d9e8;
+  border-radius: 22px;
+  padding: 18px;
+  display: grid;
+  gap: 10px;
+  box-shadow: 0 12px 24px rgba(120, 70, 110, 0.08);
+}
+.letter-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+.letter-card-date {
+  color: #8a6a82;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+.letter-card-theme {
+  margin: 0;
+  font-size: 1.08rem;
+  color: #4a3550;
+  line-height: 1.35;
+}
+.letter-card-excerpt {
+  margin: 0;
+  color: #6b6070;
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.letter-audio-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f3ebff;
+  color: #6b4f96;
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.letter-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.letter-form-card,
+.letter-detail-card {
+  background: linear-gradient(180deg, #ffffff 0%, #fffafd 100%);
+  border-color: #efd8ea;
+}
+.letter-audio-panel {
+  padding: 16px;
+  border-radius: 18px;
+  background: #faf5ff;
+  border: 1px dashed #dcc9ef;
+  display: grid;
+  gap: 12px;
+}
+.letter-audio-panel h4 {
+  margin: 0;
+  color: #5c4670;
+}
+.letter-audio-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.letter-recording-status {
+  color: #b0446d;
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+.letter-recording-status.is-recording::before {
+  content: '● ';
+  animation: letterPulse 1s ease-in-out infinite;
+}
+@keyframes letterPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.letter-audio-player {
+  width: 100%;
+  max-width: 100%;
+}
+.letter-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.letter-detail-date {
+  display: block;
+  color: #8a6a82;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.letter-detail-text {
+  white-space: pre-wrap;
+  line-height: 1.75;
+  color: #3f3346;
+  font-size: 1.02rem;
+  margin-bottom: 16px;
+}
+@media (max-width: 520px) {
+  .letters-grid { grid-template-columns: 1fr; }
+  .letter-card-actions { flex-direction: column; }
+  .letter-card-actions button { width: 100%; }
+}

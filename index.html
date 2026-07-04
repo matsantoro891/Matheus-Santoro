@@ -11,11 +11,11 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/favicon.png" />
-  <link rel="stylesheet" href="styles.css?v=31" />
+  <link rel="stylesheet" href="styles.css?v=32" />
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script defer src="growth-reference.js"></script>
-  <script defer src="app.js?v=31"></script>
+  <script defer src="app.js?v=32"></script>
 </head>
 <body>
   <header class="app-header">
@@ -86,6 +86,7 @@
           <button type="button" class="home-nav-card active-card" data-tab-target="memorias"><span class="home-nav-icon">🖼️</span><span>Memórias</span></button>
           <button type="button" class="home-nav-card" data-tab-target="agenda"><span class="home-nav-icon">📅</span><span>Eventos</span></button>
           <button type="button" class="home-nav-card full-width" data-tab-target="evolucao"><span class="home-nav-icon">📈</span><span>Evolução</span></button>
+          <button type="button" class="home-nav-card full-width" data-tab-target="cartas"><span class="home-nav-icon">💌</span><span>Cartas para meu Filho</span></button>
         </div>
 
         <div class="home-decor-strip card">
@@ -399,6 +400,68 @@
       <div class="favorite-grid">
         <article class="card"><h3>Memórias favoritas</h3><div id="favoriteMemories" class="memory-grid list-view"></div></article>
         <article class="card"><h3>Estatísticas rápidas</h3><div id="favoriteStats" class="stats-grid"></div></article>
+      </div>
+    </section>
+
+    <section id="cartas" class="tab-panel">
+      <div class="section-head letters-head">
+        <h2>Cartas para meu Filho</h2>
+        <p>Palavras do coração para guardar e compartilhar no futuro.</p>
+      </div>
+
+      <div id="lettersListView">
+        <div class="letters-top-actions">
+          <button type="button" id="newLetterBtn" class="primary">Nova carta</button>
+        </div>
+        <div id="letterList" class="letters-grid"></div>
+      </div>
+
+      <div id="letterFormView" class="hidden">
+        <article class="card letter-form-card">
+          <h3 id="letterFormTitle">Nova carta</h3>
+          <form id="letterForm" class="grid-form">
+            <input type="hidden" name="letterId" />
+            <label>Data<input name="date" type="date" required /></label>
+            <label class="wide">Tema<input name="theme" placeholder="Ex.: Meu amor por você" /></label>
+            <label class="wide">Sua carta<textarea name="text" rows="10" placeholder="Escreva aqui o que você quer dizer..."></textarea></label>
+            <div class="wide letter-audio-panel">
+              <h4>Gravação de áudio</h4>
+              <p class="muted">Opcional: grave uma mensagem em voz para acompanhar a carta.</p>
+              <div class="letter-audio-controls">
+                <button type="button" id="letterRecordStartBtn" class="secondary">Iniciar gravação</button>
+                <button type="button" id="letterRecordStopBtn" class="secondary" disabled>Parar gravação</button>
+                <span id="letterRecordingStatus" class="letter-recording-status"></span>
+              </div>
+              <audio id="letterPreviewAudio" controls playsinline class="letter-audio-player hidden"></audio>
+              <audio id="letterExistingAudio" controls playsinline class="letter-audio-player hidden"></audio>
+              <button type="button" id="letterRemoveAudioBtn" class="secondary hidden">Remover áudio</button>
+            </div>
+            <div class="actions wide">
+              <button type="submit" class="primary">Salvar carta</button>
+              <button type="button" id="letterSaveWithoutAudioBtn" class="secondary">Salvar sem áudio</button>
+              <button type="button" id="letterFormCancelBtn" class="secondary">Voltar</button>
+            </div>
+          </form>
+        </article>
+      </div>
+
+      <div id="letterDetailView" class="hidden">
+        <article class="card letter-detail-card">
+          <div class="letter-detail-head">
+            <div>
+              <span id="letterDetailDate" class="letter-detail-date"></span>
+              <h3 id="letterDetailTheme"></h3>
+            </div>
+            <span id="letterDetailAudioBadge" class="letter-audio-badge hidden">🎙️ Áudio</span>
+          </div>
+          <div id="letterDetailText" class="letter-detail-text"></div>
+          <audio id="letterDetailAudio" controls playsinline class="letter-audio-player hidden"></audio>
+          <div class="actions">
+            <button type="button" id="letterDetailEditBtn" class="secondary">Editar</button>
+            <button type="button" id="letterDetailDeleteBtn" class="danger">Excluir</button>
+            <button type="button" id="letterDetailBackBtn" class="secondary">Voltar</button>
+          </div>
+        </article>
       </div>
     </section>
 
