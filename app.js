@@ -2326,19 +2326,39 @@ function resetMilestoneForm() {
   updateMilestoneFieldBehavior();
 }
 
-function growthChartAgeLimit(chartType, child, points) {
-  const birth = dateAtMidday(child.nascimento);
-  const currentMonths = birth ? ageCompleteMonthsAt(child, new Date().toISOString().slice(0, 10)) : 0;
-  const itemMonths = points.map(point => point.x).filter(Number.isFinite);
-  const latest = Math.max(currentMonths || 0, ...itemMonths, 0);
-  if (chartType === 'headCircumference') return Math.min(Math.max(latest, 12), 60);
-  if (chartType === 'bmi') return Math.min(Math.max(latest, 24), 240);
-  if (latest <= 24) return Math.min(Math.max(latest, 12), 24);
-  if (latest <= 60) return Math.min(latest, 60);
-  return Math.min(latest, 228);
+function growthChartVisualRange(chartType, child, items) {
+  if (chartType === 'bmi') {
+    return { minMonths: 24, maxMonths: 240, footerKey: 'cdcBmi', subtitleSuffix: 'CDC 2–20 anos', heightReference: null };
+  }
+  if (chartType === 'headCircumference') {
+    return { minMonths: 0, maxMonths: 60, footerKey: 'who05', subtitleSuffix: 'OMS 0–5 anos', heightReference: null };
+  }
+  const currentMonths = ageCompleteMonthsAt(child, new Date().toISOString().slice(0, 10)) ?? 0;
+  const maxItemMonth = items.length ? Math.max(...items.map(point => point.x).filter(Number.isFinite)) : 0;
+  if (currentMonths > 60 || maxItemMonth > 60) {
+    return { minMonths: 60, maxMonths: 228, footerKey: 'who519', subtitleSuffix: 'OMS 5–19 anos', heightReference: 'who519' };
+  }
+  return { minMonths: 0, maxMonths: 60, footerKey: 'who05', subtitleSuffix: 'OMS 0–5 anos', heightReference: 'who05' };
 }
 
-function chartReferencePoint(chartType, sex, month, z) {
+function growthChartReferenceStep(minMonths, maxMonths) {
+  const span = maxMonths - minMonths;
+  if (span <= 60) return 1;
+  if (span <= 120) return 3;
+  if (span <= 180) return 6;
+  return 12;
+}
+
+function growthChartXLabel(months, range) {
+  if (range.maxMonths <= 60 && months < 24) return `${Math.round(months)}m`;
+  const years = months / 12;
+  const decimals = Number.isInteger(years) || Math.abs(years - Math.round(years)) < 0.05 ? 0 : 1;
+  return `${formatLocaleNumber(years, decimals)}a`;
+}
+
+function chartReferencePoint(chartType, sex, month, z, range) {
+  if (chartType === 'height' && range?.heightReference === 'who519' && month < 61) return null;
+  if (chartType === 'height' && range?.heightReference === 'who05' && month > 60) return null;
   const days = Math.round(month * 30.4375);
   const ref = getGrowthLms(chartType, sex, days, month);
   if (!ref) return null;
@@ -2346,11 +2366,22 @@ function chartReferencePoint(chartType, sex, month, z) {
   return Number.isFinite(value) ? value : null;
 }
 
-function growthChartSubtitle(chartType, child, sex) {
+function growthChartSubtitle(chartType, sex, range) {
   const sexLabel = sex === 'female' ? 'Menina' : 'Menino';
-  if (chartType === 'height') return `${sexLabel} · OMS 0–19 anos`;
-  if (chartType === 'headCircumference') return `${sexLabel} · OMS 0–5 anos`;
-  return `${sexLabel} · CDC 2–20 anos`;
+  const suffix = range?.subtitleSuffix || (chartType === 'bmi' ? 'CDC 2–20 anos' : chartType === 'headCircumference' ? 'OMS 0–5 anos' : 'OMS 0–19 anos');
+  return `${sexLabel} · ${suffix}`;
+}
+
+function growthChartPointsInRange(items, chartType, range) {
+  return items.filter(point => {
+    if (!Number.isFinite(point.x)) return false;
+    if (point.x < range.minMonths || point.x > range.maxMonths) return false;
+    if (chartType === 'headCircumference' && point.x > 60) return false;
+    if (chartType === 'bmi' && (point.x < 24 || point.x > 240)) return false;
+    if (chartType === 'height' && range.heightReference === 'who519' && point.x < 60) return false;
+    if (chartType === 'height' && range.heightReference === 'who05' && point.x > 60) return false;
+    return true;
+  });
 }
 
 function growthChartPoints(chartType, child) {
@@ -2406,7 +2437,7 @@ function buildGrowthChartView(chartType, child = currentChild()) {
       unavailable: true
     };
   }
-  const maxMonths = growthChartAgeLimit(chartType, child, items);
+  const range = growthChartVisualRange(chartType, child, items);
   if (chartType === 'headCircumference' && items.every(point => point.x > 60)) {
     return {
       html: '<div class="growth-empty">A referência disponível no app para perímetro cefálico é de 0 a 5 anos.</div>',
@@ -2415,37 +2446,41 @@ function buildGrowthChartView(chartType, child = currentChild()) {
       unavailable: true
     };
   }
-  const step = maxMonths <= 24 ? 1 : maxMonths <= 60 ? 2 : maxMonths <= 120 ? 4 : 6;
+  const { minMonths, maxMonths } = range;
+  const step = growthChartReferenceStep(minMonths, maxMonths);
   const referenceSeries = GROWTH_PERCENTILES.map(percentile => ({
     ...percentile,
-    points: Array.from({ length: Math.floor(maxMonths / step) + 1 }, (_, index) => {
-      const month = Math.min(maxMonths, index * step);
-      return { x: month, y: chartReferencePoint(chartType, sex, month, percentile.z) };
+    points: Array.from({ length: Math.floor((maxMonths - minMonths) / step) + 1 }, (_, index) => {
+      const month = minMonths + Math.min(maxMonths - minMonths, index * step);
+      return { x: month, y: chartReferencePoint(chartType, sex, month, percentile.z, range) };
     }).filter(point => Number.isFinite(point.y))
   }));
-  const visibleItems = items.filter(point => point.x <= maxMonths && (chartType !== 'headCircumference' || point.x <= 60) && (chartType !== 'bmi' || (point.x >= 24 && point.x <= 240)));
-  const allY = referenceSeries.flatMap(series => series.points.map(point => point.y)).concat(visibleItems.map(point => point.y));
+  const visibleItems = growthChartPointsInRange(items, chartType, range);
+  const curveYs = referenceSeries.flatMap(series => series.points.map(point => point.y));
+  const pointYs = visibleItems.map(point => point.y);
+  const allY = curveYs.length ? curveYs.concat(pointYs) : pointYs;
   if (!allY.length) {
     return {
       html: '<div class="growth-empty">Fora da faixa etária da curva de referência.</div>',
       statusText: '',
-      footerText: growthFooterText(chartType === 'bmi' ? 'cdcBmi' : 'who05'),
+      footerText: growthFooterText(range.footerKey || 'who05'),
       unavailable: true
     };
   }
   let yMin = Math.min(...allY), yMax = Math.max(...allY);
-  const pad = Math.max((yMax - yMin) * 0.09, chartType === 'bmi' ? 0.8 : 1);
+  const pad = Math.max((yMax - yMin) * 0.08, chartType === 'bmi' ? 0.8 : 1);
   yMin = Math.max(0, yMin - pad); yMax += pad;
   const W = 760, H = 390, left = 58, top = 42, right = 46, bottom = 74;
   const plotW = W - left - right, plotH = H - top - bottom;
-  const xScale = value => left + (value / maxMonths) * plotW;
+  const spanMonths = maxMonths - minMonths;
+  const xScale = value => left + ((value - minMonths) / spanMonths) * plotW;
   const yScale = value => top + (1 - (value - yMin) / (yMax - yMin)) * plotH;
   const yTicks = Array.from({ length: 6 }, (_, i) => yMin + (yMax - yMin) * i / 5);
-  const xTicks = Array.from({ length: 7 }, (_, i) => maxMonths * i / 6);
+  const xTicks = Array.from({ length: 7 }, (_, i) => minMonths + spanMonths * i / 6);
   const curveColors = ['#9aa8bd', '#9ec5f8', '#2563b8', '#9ec5f8', '#9aa8bd'];
   const yUnit = chartType === 'bmi' ? 'kg/m²' : 'cm';
   const title = config.title || 'Gráfico de crescimento';
-  const subtitle = growthChartSubtitle(chartType, child, sex);
+  const subtitle = growthChartSubtitle(chartType, sex, range);
   const curves = referenceSeries.map((series, index) => `<path d="${svgPath(series.points, xScale, yScale)}" fill="none" stroke="${curveColors[index]}" stroke-width="${series.label === 'P50' ? 2.8 : 1.6}" stroke-dasharray="${series.label === 'P50' ? '' : '5 4'}"/><text x="${W-right+5}" y="${yScale(series.points[series.points.length - 1]?.y || yMin)+4}" class="curve-label">${series.label}</text>`).join('');
   const sortedItems = [...visibleItems].sort((a, b) => (a.item.date || '').localeCompare(b.item.date || ''));
   const latestId = sortedItems[sortedItems.length - 1]?.item?.id || sortedItems[sortedItems.length - 1]?.item?.date;
@@ -2456,8 +2491,8 @@ function buildGrowthChartView(chartType, child = currentChild()) {
     return `<g><circle cx="${xScale(point.x)}" cy="${yScale(point.y)}" r="${radius}" class="child-growth-point${isLatest ? ' latest' : ''}"><title>${formatDate(point.item.date)} — ${point.labelValue || formatLocaleNumber(point.y, 1)} — ${label}</title></circle><text x="${xScale(point.x)+8}" y="${yScale(point.y)-8}" class="point-label">${label}</text></g>`;
   }).join('');
   const gridY = yTicks.map(value => `<line x1="${left}" y1="${yScale(value)}" x2="${W-right}" y2="${yScale(value)}" class="chart-grid-line"/><text x="${left-8}" y="${yScale(value)+4}" text-anchor="end" class="axis-label">${formatLocaleNumber(value, chartType === 'bmi' ? 1 : 0)}</text>`).join('');
-  const gridX = xTicks.map(value => `<line x1="${xScale(value)}" y1="${top}" x2="${xScale(value)}" y2="${H-bottom}" class="chart-grid-line vertical"/><text x="${xScale(value)}" y="${H-bottom+24}" text-anchor="middle" class="axis-label">${value < 24 ? Math.round(value) + 'm' : formatLocaleNumber(value/12,1) + 'a'}</text>`).join('');
-  const footerKey = chartType === 'bmi' ? 'cdcBmi' : (maxMonths > 60 && chartType === 'height' ? 'who519' : 'who05');
+  const gridX = xTicks.map(value => `<line x1="${xScale(value)}" y1="${top}" x2="${xScale(value)}" y2="${H-bottom}" class="chart-grid-line vertical"/><text x="${xScale(value)}" y="${H-bottom+24}" text-anchor="middle" class="axis-label">${growthChartXLabel(value, range)}</text>`).join('');
+  const footerKey = range.footerKey || (chartType === 'bmi' ? 'cdcBmi' : 'who05');
   const footer = GROWTH_FOOTERS[footerKey];
   const footerSvg = `<text x="${left}" y="${H-42}" class="growth-footer-title">${escapeHtml(footer.line1)}</text>${footer.line2.split('\n').map((line, index) => `<text x="${left}" y="${H-26 + index * 12}" class="growth-footer-text">${escapeHtml(line)}</text>`).join('')}`;
   const svgInner = `${growthChartSvgStyle()}<text x="${left}" y="18" class="chart-main-title">${escapeHtml(title)}</text><text x="${left}" y="34" class="chart-subtitle">${escapeHtml(subtitle)}</text><rect x="${left}" y="${top}" width="${plotW}" height="${plotH}" rx="12" class="chart-bg"/>${gridY}${gridX}${curves}${points}<text x="${left}" y="${top-8}" class="axis-title">${yUnit}</text><text x="${W-right}" y="${H-bottom+8}" text-anchor="end" class="axis-title">Idade</text>${footerSvg}`;
@@ -3514,7 +3549,7 @@ function growthChartPdfSvg(chartType, child) {
   const config = GROWTH_CHART_TYPES.find(item => item.id === chartType) || {};
   const view = buildGrowthChartView(chartType, child);
   const title = config.title || 'Gráfico de crescimento';
-  const subtitle = childSexKey(child) ? growthChartSubtitle(chartType, child, childSexKey(child)) : '';
+  const subtitle = childSexKey(child) ? growthChartSubtitle(chartType, childSexKey(child), growthChartVisualRange(chartType, child, growthChartPoints(chartType, child))) : '';
   const status = view.statusText || (view.unavailable ? '' : 'Sem registros');
   const statusBadge = status
     ? `<rect x="760" y="42" width="380" height="38" rx="19" fill="#eaf2ff"/><text x="950" y="66" text-anchor="middle" fill="#2f6ed0" font-size="18" font-weight="800" font-family="Inter,Arial,sans-serif">${escapeHtml(status)}</text>`
