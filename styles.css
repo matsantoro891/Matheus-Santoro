@@ -1235,6 +1235,7 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
 .hero-circle-btn,
 .camera-badge,
 .heart-chip,
+.letter-action-btn,
 .bottom-nav-btn,
 .home-nav-card,
 .backup-action-btn,
@@ -1381,9 +1382,11 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
   background: linear-gradient(180deg, #fff 0%, #fff9fc 100%);
   border: 1px solid #f0d9e8;
   border-radius: 22px;
-  padding: 18px;
-  display: grid;
-  gap: 10px;
+  padding: 16px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
   box-shadow: 0 12px 24px rgba(120, 70, 110, 0.08);
 }
 .letter-card-head {
@@ -1392,6 +1395,12 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
   align-items: flex-start;
   gap: 10px;
 }
+.letter-card-body {
+  flex: 1;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
 .letter-card-date {
   color: #8a6a82;
   font-size: 0.86rem;
@@ -1399,7 +1408,7 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
 }
 .letter-card-theme {
   margin: 0;
-  font-size: 1.08rem;
+  font-size: 1.05rem;
   color: #4a3550;
   line-height: 1.35;
 }
@@ -1407,8 +1416,9 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
   margin: 0;
   color: #6b6070;
   line-height: 1.55;
+  font-size: 0.92rem;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -1427,8 +1437,26 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
 .letter-card-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid #f0d9e8;
+  max-width: 100%;
+}
+.letter-action-btn {
+  width: auto;
+  min-width: 0;
+  padding: 6px 11px;
+  font-size: 0.74rem;
+  line-height: 1;
+  border-radius: 10px;
+  box-shadow: none;
+  white-space: nowrap;
+  flex: 0 1 auto;
+}
+.letter-delete-btn {
+  opacity: 0.9;
 }
 .letter-form-card,
 .letter-detail-card {
@@ -1492,6 +1520,8 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
 }
 @media (max-width: 520px) {
   .letters-grid { grid-template-columns: 1fr; }
-  .letter-card-actions { flex-direction: column; }
-  .letter-card-actions button { width: 100%; }
+  .letter-card { padding: 14px 14px 10px; }
+  .letter-card-excerpt { -webkit-line-clamp: 5; font-size: 0.9rem; }
+  .letter-card-actions { gap: 5px; padding-top: 8px; }
+  .letter-action-btn { padding: 5px 8px; font-size: 0.68rem; width: auto; }
 }

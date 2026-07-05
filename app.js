@@ -1925,12 +1925,14 @@ function renderLetters() {
         <span class="letter-card-date">${formatDate(letter.date)}</span>
         ${letter.audioFile ? '<span class="letter-audio-badge">🎙️ Áudio</span>' : ''}
       </div>
-      <h4 class="letter-card-theme">${escapeHtml(letter.theme || 'Carta especial')}</h4>
-      <p class="letter-card-excerpt">${escapeHtml(letterExcerpt(letter.text))}</p>
+      <div class="letter-card-body">
+        <h4 class="letter-card-theme">${escapeHtml(letter.theme || 'Carta especial')}</h4>
+        <p class="letter-card-excerpt">${escapeHtml(letterExcerpt(letter.text))}</p>
+      </div>
       <div class="letter-card-actions">
-        <button type="button" class="secondary" onclick="openLetter('${letter.id}')">Abrir</button>
-        <button type="button" class="secondary" onclick="editLetter('${letter.id}')">Editar</button>
-        <button type="button" class="danger" onclick="deleteLetter('${letter.id}')">Excluir</button>
+        <button type="button" class="secondary letter-action-btn" onclick="openLetter('${letter.id}')">Abrir</button>
+        <button type="button" class="secondary letter-action-btn" onclick="editLetter('${letter.id}')">Editar</button>
+        <button type="button" class="danger letter-action-btn letter-delete-btn" onclick="deleteLetter('${letter.id}')">Excluir</button>
       </div>
     </article>
   `).join('');
