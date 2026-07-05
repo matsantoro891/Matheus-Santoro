@@ -1239,6 +1239,10 @@ async function shareAsset(asset) {
   }
 }
 
+function memoryFavoriteHeartButton(memoryId, isFavorite) {
+  return `<button type="button" class="favorite-heart-btn${isFavorite ? ' active' : ''}" onclick="event.stopPropagation(); toggleFavorite('${memoryId}')" aria-label="${isFavorite ? 'Remover dos favoritos' : 'Favoritar memória'}">${isFavorite ? '♥' : '♡'}</button>`;
+}
+
 function renderMemories() {
   const child = currentChild();
   let memories = [...child.memories].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -1270,7 +1274,7 @@ function renderMemories() {
         <div class="memory-media-wrap">
           ${media}
           ${multiBadge}
-          ${m.favorite ? '<span class="favorite-badge">♥</span>' : ''}
+          ${memoryFavoriteHeartButton(m.id, !!m.favorite)}
         </div>
         <div class="memory-content">
           <span class="date">${formatDate(m.date)}</span>
@@ -1279,9 +1283,8 @@ function renderMemories() {
           ${m.description ? `<p>${escapeHtml(m.description)}</p>` : ''}
           ${assets.length ? `<small>${assets.length} anexo(s)</small>` : '<small>Sem anexos</small>'}
           <div class="memory-actions">
-            <button class="secondary" onclick="openMemoryViewer('${m.id}',0)">Abrir</button>
-            <button class="secondary" onclick="toggleFavorite('${m.id}')">${m.favorite ? 'Remover favorito' : 'Favoritar'}</button>
-            <button class="primary memory-delete-button" onclick="removeItem('memories','${m.id}')">Excluir</button>
+            <button type="button" class="secondary memory-action-btn" onclick="openMemoryViewer('${m.id}',0)">Abrir</button>
+            <button type="button" class="danger memory-action-btn memory-delete-button" onclick="removeItem('memories','${m.id}')">Excluir</button>
           </div>
         </div>
       </article>`;
@@ -1643,7 +1646,7 @@ function renderFavorites() {
   favWrap.innerHTML = favorites.length ? favorites.map(m => {
     const asset = firstAsset(m);
     const media = asset ? (isImage(asset) ? `<div class="memory-media"><img src="${asset.dataUrl}" alt="${escapeHtml(m.title || 'Memória')}"></div>` : isVideo(asset) ? `<div class="memory-media"><img src="${asset.thumbnail || ''}" alt="${escapeHtml(m.title || 'Vídeo')}"><span class="play-badge">▶</span></div>` : `<div class="memory-media">${escapeHtml(getAssetIcon(asset))}</div>`) : `<div class="memory-media">Sem mídia</div>`;
-    return `<article class="memory-card"><div class="memory-media-wrap">${media}<span class="favorite-badge">♥</span></div><div class="memory-content"><span class="date">${formatDate(m.date)}</span><h4>${escapeHtml(m.title || 'Memória')}</h4>${m.description ? `<p>${escapeHtml(m.description)}</p>` : ''}</div></article>`;
+    return `<article class="memory-card"><div class="memory-media-wrap">${media}${memoryFavoriteHeartButton(m.id, true)}</div><div class="memory-content"><span class="date">${formatDate(m.date)}</span><h4>${escapeHtml(m.title || 'Memória')}</h4>${m.description ? `<p>${escapeHtml(m.description)}</p>` : ''}</div></article>`;
   }).join('') : '<p class="muted">Nenhuma memória favorita cadastrada.</p>';
   const totalFiles = child.memories.reduce((sum, m) => sum + memoryAssets(m).length, 0);
   const stats = [

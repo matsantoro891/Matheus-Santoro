@@ -326,12 +326,50 @@ button, .import-label {
 }
 .play-badge { inset: auto auto 10px 10px; }
 .favorite-badge { top: 10px; right: 10px; }
-.memory-content { padding: 12px; display: grid; gap: 6px; }
+.favorite-heart-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.94);
+  color: #9aa8bd;
+  font-size: 1.15rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 4px 12px rgba(33, 75, 140, 0.14);
+  cursor: pointer;
+  padding: 0;
+}
+.favorite-heart-btn.active { color: #e63946; }
+.memory-media-wrap { position: relative; }
+.memory-content { padding: 12px; display: grid; gap: 6px; min-width: 0; }
 .memory-content h4 { margin: 0; }
 .memory-content p { margin: 0; color: var(--muted); line-height: 1.45; }
 .memory-content .date { color: var(--primary-dark); font-weight: 850; font-size: 0.86rem; }
-.memory-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.memory-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  max-width: 100%;
+}
 .memory-actions button { padding: 8px 10px; font-size: 0.85rem; }
+.memory-grid.list-view .memory-actions {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+.memory-grid.list-view .memory-action-btn {
+  padding: 6px 10px;
+  font-size: 0.74rem;
+  min-width: 0;
+  flex: 0 1 auto;
+  white-space: nowrap;
+}
 .memory-delete-button { box-shadow: none; }
 
 .memory-grid.list-view .memory-card { display: grid; grid-template-columns: 173px 1fr; }
@@ -507,20 +545,18 @@ button, .import-label {
     min-height: 0;
   }
 
-  #memoryList.memory-grid:not(.list-view) .play-badge,
-  #memoryList.memory-grid:not(.list-view) .favorite-badge {
-    font-size: 0.62rem;
-    padding: 4px 6px;
-  }
-
   #memoryList.memory-grid:not(.list-view) .play-badge {
     left: 6px;
     bottom: 6px;
+    padding: 4px 6px;
   }
 
-  #memoryList.memory-grid:not(.list-view) .favorite-badge {
+  #memoryList.memory-grid:not(.list-view) .favorite-heart-btn {
+    width: 28px;
+    height: 28px;
     top: 6px;
     right: 6px;
+    font-size: 0.95rem;
   }
 }
 
@@ -822,6 +858,10 @@ body.memory-viewer-open .bottom-nav {
   }
   .memory-grid.list-view .memory-media {
     min-height: 120px;
+  }
+  .memory-grid.list-view .memory-action-btn {
+    padding: 5px 8px;
+    font-size: 0.7rem;
   }
   .memory-viewer-card { padding: 0; }
   .carousel-controls button { width: auto; }
