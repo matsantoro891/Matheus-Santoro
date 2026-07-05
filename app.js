@@ -2,7 +2,7 @@ const STORAGE_KEY = 'crescer-juntos-v3';
 const EXAM_DB_NAME = 'crescer-juntos-exam-files';
 const EXAM_DB_VERSION = 1;
 const EXAM_STORE_NAME = 'attachments';
-const DEFAULT_CATEGORIES = ['Peso', 'Altura', 'Desenvolvimento motor', 'Categoria personalizada'];
+const DEFAULT_CATEGORIES = ['Peso', 'Altura', 'Perímetro cefálico', 'Desenvolvimento motor', 'Categoria personalizada'];
 const THEME_STAGES = ['bebe', 'primeira-infancia', 'infancia', 'pre-adolescencia', 'adolescencia'];
 const THEME_GENDERS = ['masculino', 'feminino'];
 const THEME_STAGE_LABELS = {
@@ -36,6 +36,25 @@ const GROWTH_PERCENTILES = [
   { label: 'P85', z: 1.036433389 },
   { label: 'P97', z: 1.880793608 }
 ];
+const GROWTH_CHART_TYPES = [
+  { id: 'height', title: 'Altura por idade', containerId: 'heightGrowthChart', statusId: 'heightChartStatus', sourceId: 'heightChartSource' },
+  { id: 'headCircumference', title: 'Perímetro cefálico por idade', containerId: 'headGrowthChart', statusId: 'headChartStatus', sourceId: 'headChartSource' },
+  { id: 'bmi', title: 'IMC por idade', containerId: 'bmiGrowthChart', statusId: 'bmiChartStatus', sourceId: 'bmiChartSource' }
+];
+const GROWTH_FOOTERS = {
+  who05: {
+    line1: 'Sociedade Brasileira de Pediatria',
+    line2: 'WHO Child Growth Standards'
+  },
+  who519: {
+    line1: 'Sociedade Brasileira de Pediatria',
+    line2: '2007 WHO Reference'
+  },
+  cdcBmi: {
+    line1: 'Sociedade Brasileira de Pediatria',
+    line2: 'December 15, 2022\nData source: National Health Examination Survey and National Health and Nutrition Examination Survey.\nDeveloped by: National Center for Health Statistics in collaboration with National Center for Chronic Disease Prevention and Health Promotion, 2022.\nCS330334'
+  }
+};
 
 let state = loadState();
 let memoryView = 'grid';
@@ -1938,10 +1957,19 @@ window.deleteLetter = async function(letterId) {
 };
 
 function childSexKey(child = currentChild()) {
-  const sex = String(child.sexo || '').toLowerCase();
-  if (sex.includes('femin')) return 'female';
-  if (sex.includes('mascul')) return 'male';
+  const sex = String(child.sexo || '').trim().toLowerCase();
+  if (!sex) return null;
+  if (sex === 'f' || sex === 'feminino' || sex === 'menina' || sex.startsWith('femin')) return 'female';
+  if (sex === 'm' || sex === 'masculino' || sex === 'menino' || sex.startsWith('mascul')) return 'male';
   return null;
+}
+
+function sexDisplayLabel(sexKey) {
+  return sexKey === 'female' ? 'meninas' : sexKey === 'male' ? 'meninos' : '';
+}
+
+function sexUsedForReferenceLabel(sexKey) {
+  return sexKey === 'female' ? 'Feminino' : sexKey === 'male' ? 'Masculino' : '';
 }
 
 function parseLocaleNumber(value) {
@@ -1971,17 +1999,102 @@ function ageMonthsFromDays(days) {
   return days == null ? null : days / 30.4375;
 }
 
-function getGrowthLms(metric, sex, ageDays) {
-  const source = window.WHO_GROWTH_DATA?.[metric]?.[sex];
-  if (!source || ageDays == null || ageDays < 0) return null;
+function ageCompleteMonthsAt(child, dateValue) {
+  const birth = dateAtMidday(child.nascimento);
+  const measured = dateAtMidday(dateValue);
+  if (!birth || !measured || measured < birth) return null;
+  let months = (measured.getFullYear() - birth.getFullYear()) * 12 + (measured.getMonth() - birth.getMonth());
+  if (measured.getDate() < birth.getDate()) months -= 1;
+  return Math.max(0, months);
+}
+
+function ageAtDateText(months) {
+  if (months == null || !Number.isFinite(months)) return 'idade não disponível';
+  const years = Math.floor(months / 12);
+  const rem = months % 12;
+  const parts = [];
+  if (years > 0) parts.push(`${years} ano${years > 1 ? 's' : ''}`);
+  if (rem > 0) parts.push(`${rem} ${rem === 1 ? 'mês' : 'meses'}`);
+  if (!parts.length) parts.push('recém-nascido');
+  return parts.join(' e ');
+}
+
+function getHeightGrowthLms(sex, ageDays, ageMonths) {
+  const source = window.WHO_GROWTH_DATA?.height?.[sex];
+  if (!source || ageDays == null || ageMonths == null) return null;
+  if (ageMonths <= 60) {
+    const under = source.under5;
+    const dayIndex = Math.round(ageDays) - under.start;
+    if (dayIndex >= 0 && dayIndex < under.values.length) {
+      return { lms: under.values[dayIndex], referenceKey: 'who05', ageUnit: 'day', ageKey: Math.round(ageDays) };
+    }
+  }
+  if (ageMonths > 60 && ageMonths <= 228) {
+    const older = source.older;
+    const monthIndex = ageMonths - older.start;
+    if (monthIndex >= 0 && monthIndex < older.values.length) {
+      return { lms: older.values[monthIndex], referenceKey: 'who519', ageUnit: 'month', ageKey: ageMonths };
+    }
+  }
+  return null;
+}
+
+function getHeadCircumferenceGrowthLms(sex, ageDays, ageMonths) {
+  const source = window.GROWTH_REFERENCE_EXT?.headCircumference?.[sex];
+  if (!source || ageDays == null || ageMonths == null || ageMonths > 60) return null;
   const under = source.under5;
   const dayIndex = Math.round(ageDays) - under.start;
-  if (dayIndex >= 0 && dayIndex < under.values.length) return { lms: under.values[dayIndex], ageUnit: 'day', ageKey: Math.round(ageDays) };
-  const month = Math.floor(ageDays / 30.4375);
-  const older = source.older;
-  const monthIndex = month - older.start;
-  if (monthIndex >= 0 && monthIndex < older.values.length) return { lms: older.values[monthIndex], ageUnit: 'month', ageKey: month };
+  if (dayIndex >= 0 && dayIndex < under.values.length) {
+    return { lms: under.values[dayIndex], referenceKey: 'who05', ageUnit: 'day', ageKey: Math.round(ageDays) };
+  }
   return null;
+}
+
+function getBmiGrowthLms(sex, ageMonths) {
+  const source = window.GROWTH_REFERENCE_EXT?.bmi?.[sex];
+  if (!source || ageMonths == null || ageMonths < 24 || ageMonths > 240) return null;
+  const index = Math.min(source.values.length - 1, Math.max(0, Math.round((ageMonths - source.start) * 2)));
+  if (index >= 0 && index < source.values.length) {
+    return { lms: source.values[index], referenceKey: 'cdcBmi', ageUnit: 'month', ageKey: ageMonths };
+  }
+  return null;
+}
+
+function getGrowthLms(metric, sex, ageDays, ageMonths = ageMonthsFromDays(ageDays)) {
+  if (!sex || ageDays == null) return null;
+  const months = ageMonths ?? ageMonthsFromDays(ageDays);
+  if (metric === 'height') return getHeightGrowthLms(sex, ageDays, months);
+  if (metric === 'headCircumference') return getHeadCircumferenceGrowthLms(sex, ageDays, months);
+  if (metric === 'bmi') return getBmiGrowthLms(sex, months);
+  if (metric === 'weight') {
+    const source = window.WHO_GROWTH_DATA?.weight?.[sex];
+    if (!source) return null;
+    const under = source.under5;
+    const dayIndex = Math.round(ageDays) - under.start;
+    if (dayIndex >= 0 && dayIndex < under.values.length) return { lms: under.values[dayIndex], referenceKey: 'who05', ageUnit: 'day', ageKey: Math.round(ageDays) };
+    const month = Math.floor(ageDays / 30.4375);
+    const older = source.older;
+    const monthIndex = month - older.start;
+    if (monthIndex >= 0 && monthIndex < older.values.length) return { lms: older.values[monthIndex], referenceKey: 'who05', ageUnit: 'month', ageKey: month };
+  }
+  return null;
+}
+
+function referenceNameForResult(metric, sex, referenceKey, ageMonths) {
+  const sexLabel = sexDisplayLabel(sex);
+  if (metric === 'height') {
+    if (referenceKey === 'who519') return `Referência OMS, ${sexLabel}, 5–19 anos.`;
+    return `Referência OMS, ${sexLabel}, 0–5 anos.`;
+  }
+  if (metric === 'headCircumference') return `Referência OMS, ${sexLabel}, 0–5 anos.`;
+  if (metric === 'bmi') return `Referência CDC, ${sexLabel}, 2–20 anos.`;
+  if (metric === 'weight') return `Referência OMS, ${sexLabel}, 0–10 anos.`;
+  return '';
+}
+
+function growthFooterText(referenceKey) {
+  const footer = GROWTH_FOOTERS[referenceKey] || GROWTH_FOOTERS.who05;
+  return `${footer.line1}\n${footer.line2}`;
 }
 
 function lmsValueAtZ(lms, z) {
@@ -2015,28 +2128,148 @@ function milestoneMeasurement(item) {
     if (item.unit === 'cm' || /cm/i.test(String(item.value || '')) || numeric > 3) return numeric;
     return numeric * 100;
   }
+  if (item.category === 'Perímetro cefálico') return numeric;
   return numeric;
 }
 
-function milestonePercentile(item, child = currentChild()) {
-  const metric = item.category === 'Peso' ? 'weight' : item.category === 'Altura' ? 'height' : null;
+function growthMetricForCategory(category) {
+  if (category === 'Peso') return 'weight';
+  if (category === 'Altura') return 'height';
+  if (category === 'Perímetro cefálico') return 'headCircumference';
+  return null;
+}
+
+function growthPercentileResult(value, metric, child, dateValue) {
   const sex = childSexKey(child);
-  const days = ageDaysAt(child, item.date);
-  if (!metric || !sex || days == null) return null;
-  const reference = getGrowthLms(metric, sex, days);
-  if (!reference) return null;
-  const value = milestoneMeasurement(item);
+  const days = ageDaysAt(child, dateValue);
+  const months = ageCompleteMonthsAt(child, dateValue);
+  if (!metric || !sex || days == null || months == null || !Number.isFinite(value) || value <= 0) return null;
+  const reference = getGrowthLms(metric, sex, days, months);
+  if (!reference) {
+    if (metric === 'height' && (months > 228 || months < 0)) return { outOfRange: true };
+    if (metric === 'headCircumference' && months > 60) return { outOfRange: true, headTooOld: true };
+    if (metric === 'bmi' && months < 24) return { outOfRange: true, bmiTooYoung: true };
+    if (metric === 'bmi' && months > 240) return { outOfRange: true };
+    return null;
+  }
   const z = lmsZScore(value, reference.lms);
   if (!Number.isFinite(z)) return null;
-  return { percentile: Math.max(0.1, Math.min(99.9, normalCdf(z) * 100)), z, ageDays: days, ageMonths: ageMonthsFromDays(days) };
+  const percentile = Math.max(0.1, Math.min(99.9, normalCdf(z) * 100));
+  return {
+    percentile,
+    z,
+    ageDays: days,
+    ageMonths: months,
+    referenceKey: reference.referenceKey,
+    referenceName: referenceNameForResult(metric, sex, reference.referenceKey, months),
+    sexUsedForReference: sexUsedForReferenceLabel(sex)
+  };
+}
+
+function milestonePercentile(item, child = currentChild()) {
+  const metric = growthMetricForCategory(item.category);
+  if (!metric) return null;
+  return growthPercentileResult(milestoneMeasurement(item), metric, child, item.date);
+}
+
+function bmiPointsForChild(child = currentChild()) {
+  const byDate = {};
+  child.milestones.forEach(item => {
+    if (item.category !== 'Peso' && item.category !== 'Altura') return;
+    (byDate[item.date] ||= {})[item.category] = item;
+  });
+  return Object.entries(byDate)
+    .filter(([, pair]) => pair.Peso && pair.Altura)
+    .map(([date, pair]) => {
+      const weightKg = milestoneMeasurement(pair.Peso);
+      const heightCm = milestoneMeasurement(pair.Altura);
+      const heightM = heightCm / 100;
+      const bmi = weightKg / (heightM * heightM);
+      const result = growthPercentileResult(bmi, 'bmi', child, date);
+      return {
+        date,
+        bmi,
+        weight: pair.Peso,
+        height: pair.Altura,
+        months: ageCompleteMonthsAt(child, date),
+        result
+      };
+    })
+    .filter(point => Number.isFinite(point.bmi) && point.bmi > 0 && point.months != null);
+}
+
+function computeMilestoneGrowthFields(item, child = currentChild()) {
+  const metric = growthMetricForCategory(item.category);
+  const ageInMonths = ageCompleteMonthsAt(child, item.date);
+  const sex = childSexKey(child);
+  const sexUsedForReference = sex ? sexUsedForReferenceLabel(sex) : '';
+  const result = milestonePercentile(item, child);
+  let calculatedPercentile = item.calculatedPercentile ?? null;
+  let referenceName = item.referenceName || '';
+  if (result?.outOfRange) {
+    calculatedPercentile = null;
+    referenceName = result.headTooOld
+      ? 'Referência disponível apenas de 0 a 5 anos.'
+      : result.bmiTooYoung
+        ? 'IMC CDC aplicável a partir de 2 anos.'
+        : 'Fora da faixa etária da curva de referência.';
+  } else if (result) {
+    calculatedPercentile = Math.round(result.percentile);
+    referenceName = result.referenceName;
+  } else if (!sex) {
+    referenceName = referenceName || 'Informe o sexo da criança no cadastro para calcular o percentil corretamente.';
+  }
+  return { ageInMonths, sexUsedForReference, calculatedPercentile, referenceName };
+}
+
+function enrichMilestoneGrowthFields(item, child = currentChild()) {
+  const computed = computeMilestoneGrowthFields(item, child);
+  const now = new Date().toISOString();
+  item.childId = item.childId || child.id;
+  item.createdAt = item.createdAt || now;
+  item.updatedAt = now;
+  item.ageInMonths = computed.ageInMonths;
+  item.sexUsedForReference = computed.sexUsedForReference;
+  item.calculatedPercentile = computed.calculatedPercentile;
+  item.referenceName = computed.referenceName;
+  return item;
+}
+
+function growthSummaryText(item, child = currentChild()) {
+  const metric = growthMetricForCategory(item.category);
+  if (!metric) return '';
+  const fields = computeMilestoneGrowthFields(item, child);
+  const value = milestoneMeasurement(item);
+  const unit = item.category === 'Altura' || item.category === 'Perímetro cefálico' ? 'cm' : item.unit || 'kg';
+  const displayValue = item.category === 'Altura' || item.category === 'Perímetro cefálico'
+    ? `${formatLocaleNumber(value, 1)} cm`
+    : `${formatLocaleNumber(value, 2)} ${unit}`;
+  const ageText = ageAtDateText(fields.ageInMonths);
+  const percentileText = percentileApproxLabel(milestonePercentile(item, child));
+  const parts = [`${item.category}: ${displayValue}`, ageText];
+  if (percentileText) parts.push(percentileText);
+  if (fields.referenceName) parts.push(fields.referenceName);
+  if (fields.sexUsedForReference) parts.push(`Sexo usado: ${fields.sexUsedForReference}`);
+  return parts.join(' — ');
 }
 
 function percentileLabel(result) {
   if (!result) return '';
+  if (result.outOfRange) return '';
   const value = result.percentile;
   if (value < 1) return 'abaixo de P1';
   if (value > 99) return 'acima de P99';
   return `P${Math.round(value)}`;
+}
+
+function percentileApproxLabel(result) {
+  const label = percentileLabel(result);
+  if (!label) {
+    if (result?.outOfRange) return 'Fora da faixa etária da curva de referência';
+    return '';
+  }
+  if (label === 'P50') return 'próximo ao P50';
+  return `próximo ao ${label}`;
 }
 
 function updateMilestoneFieldBehavior() {
@@ -2045,7 +2278,8 @@ function updateMilestoneFieldBehavior() {
   const category = form.elements.category.value;
   const isWeight = category === 'Peso';
   const isHeight = category === 'Altura';
-  const isGrowth = isWeight || isHeight;
+  const isHead = category === 'Perímetro cefálico';
+  const isGrowth = isWeight || isHeight || isHead;
   $('milestoneCustomCategoryField').classList.toggle('hidden', category !== 'Categoria personalizada');
   $('milestoneTitleField').classList.toggle('hidden', isGrowth);
   const valueInput = $('milestoneValueInput');
@@ -2055,10 +2289,20 @@ function updateMilestoneFieldBehavior() {
     valueInput.step = '0.01';
     valueInput.min = '0';
     valueInput.inputMode = 'decimal';
-    valueInput.placeholder = isWeight ? 'Ex.: 12,5' : 'Ex.: 0,82';
-    unit.textContent = isWeight ? 'kg' : 'm';
+    if (isWeight) {
+      valueInput.placeholder = 'Ex.: 12,5';
+      unit.textContent = 'kg';
+      $('milestoneValueField').firstChild.textContent = 'Peso ';
+    } else if (isHeight) {
+      valueInput.placeholder = 'Ex.: 0,82';
+      unit.textContent = 'm';
+      $('milestoneValueField').firstChild.textContent = 'Altura ';
+    } else {
+      valueInput.placeholder = 'Ex.: 45,5';
+      unit.textContent = 'cm';
+      $('milestoneValueField').firstChild.textContent = 'Perímetro cefálico ';
+    }
     unit.classList.remove('hidden');
-    $('milestoneValueField').firstChild.textContent = isWeight ? 'Peso ' : 'Altura ';
   } else {
     valueInput.type = 'text';
     valueInput.removeAttribute('step');
@@ -2079,24 +2323,170 @@ function resetMilestoneForm() {
   updateMilestoneFieldBehavior();
 }
 
-function growthChartAgeLimit(metric, child, items) {
+function growthChartAgeLimit(chartType, child, points) {
   const birth = dateAtMidday(child.nascimento);
-  const currentDays = birth ? Math.max(0, Math.round((Date.now() - birth.getTime()) / 86400000)) : 0;
-  const itemMonths = items.map(item => ageMonthsFromDays(ageDaysAt(child, item.date))).filter(Number.isFinite);
-  const latest = Math.max(ageMonthsFromDays(currentDays) || 0, ...itemMonths, 0);
-  const hardMax = metric === 'weight' ? 120 : 228;
-  if (latest <= 24) return 24;
-  if (latest <= 60) return 60;
-  if (latest <= 120) return 120;
-  return hardMax;
+  const currentMonths = birth ? ageCompleteMonthsAt(child, new Date().toISOString().slice(0, 10)) : 0;
+  const itemMonths = points.map(point => point.x).filter(Number.isFinite);
+  const latest = Math.max(currentMonths || 0, ...itemMonths, 0);
+  if (chartType === 'headCircumference') return Math.min(Math.max(latest, 12), 60);
+  if (chartType === 'bmi') return Math.min(Math.max(latest, 24), 240);
+  if (latest <= 24) return Math.min(Math.max(latest, 12), 24);
+  if (latest <= 60) return Math.min(latest, 60);
+  return Math.min(latest, 228);
 }
 
-function chartReferencePoint(metric, sex, month, z) {
+function chartReferencePoint(chartType, sex, month, z) {
   const days = Math.round(month * 30.4375);
-  const ref = getGrowthLms(metric, sex, days);
+  const ref = getGrowthLms(chartType, sex, days, month);
   if (!ref) return null;
   const value = lmsValueAtZ(ref.lms, z);
-  return Number.isFinite(value) ? (metric === 'height' ? value / 100 : value) : null;
+  return Number.isFinite(value) ? value : null;
+}
+
+function growthChartSubtitle(chartType, child, sex) {
+  const sexLabel = sex === 'female' ? 'Menina' : 'Menino';
+  if (chartType === 'height') return `${sexLabel} · OMS 0–19 anos`;
+  if (chartType === 'headCircumference') return `${sexLabel} · OMS 0–5 anos`;
+  return `${sexLabel} · CDC 2–20 anos`;
+}
+
+function growthChartPoints(chartType, child) {
+  if (chartType === 'bmi') {
+    return bmiPointsForChild(child).map(point => ({
+      item: { date: point.date, category: 'IMC' },
+      x: point.months,
+      y: point.bmi,
+      result: point.result,
+      labelValue: `${formatLocaleNumber(point.bmi, 1)} kg/m²`
+    }));
+  }
+  const category = chartType === 'height' ? 'Altura' : 'Perímetro cefálico';
+  return child.milestones.filter(item => item.category === category).map(item => {
+    const months = ageCompleteMonthsAt(child, item.date);
+    const value = milestoneMeasurement(item);
+    return {
+      item,
+      x: months,
+      y: value,
+      result: milestonePercentile(item, child),
+      labelValue: `${formatLocaleNumber(value, 1)} cm`
+    };
+  }).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y));
+}
+
+function buildGrowthChartView(chartType, child = currentChild()) {
+  const config = GROWTH_CHART_TYPES.find(item => item.id === chartType) || {};
+  const sex = childSexKey(child);
+  const emptySexMessage = 'Informe o sexo da criança no cadastro para calcular o percentil corretamente.';
+  if (!child.nascimento) {
+    return {
+      html: '<div class="growth-empty">Cadastre a data de nascimento da criança para exibir as curvas.</div>',
+      statusText: '',
+      footerText: growthFooterText(chartType === 'bmi' ? 'cdcBmi' : 'who05'),
+      unavailable: true
+    };
+  }
+  if (!sex) {
+    return {
+      html: `<div class="growth-empty">${emptySexMessage}</div>`,
+      statusText: '',
+      footerText: growthFooterText(chartType === 'bmi' ? 'cdcBmi' : 'who05'),
+      unavailable: true
+    };
+  }
+  const items = growthChartPoints(chartType, child);
+  if (!items.length) {
+    return {
+      html: '<div class="growth-empty">Sem registros suficientes para gerar este gráfico.</div>',
+      statusText: '',
+      footerText: growthFooterText(chartType === 'bmi' ? 'cdcBmi' : 'who05'),
+      unavailable: true
+    };
+  }
+  const maxMonths = growthChartAgeLimit(chartType, child, items);
+  if (chartType === 'headCircumference' && items.every(point => point.x > 60)) {
+    return {
+      html: '<div class="growth-empty">A referência disponível no app para perímetro cefálico é de 0 a 5 anos.</div>',
+      statusText: '',
+      footerText: growthFooterText('who05'),
+      unavailable: true
+    };
+  }
+  const step = maxMonths <= 24 ? 1 : maxMonths <= 60 ? 2 : maxMonths <= 120 ? 4 : 6;
+  const referenceSeries = GROWTH_PERCENTILES.map(percentile => ({
+    ...percentile,
+    points: Array.from({ length: Math.floor(maxMonths / step) + 1 }, (_, index) => {
+      const month = Math.min(maxMonths, index * step);
+      return { x: month, y: chartReferencePoint(chartType, sex, month, percentile.z) };
+    }).filter(point => Number.isFinite(point.y))
+  }));
+  const visibleItems = items.filter(point => point.x <= maxMonths && (chartType !== 'headCircumference' || point.x <= 60) && (chartType !== 'bmi' || (point.x >= 24 && point.x <= 240)));
+  const allY = referenceSeries.flatMap(series => series.points.map(point => point.y)).concat(visibleItems.map(point => point.y));
+  if (!allY.length) {
+    return {
+      html: '<div class="growth-empty">Fora da faixa etária da curva de referência.</div>',
+      statusText: '',
+      footerText: growthFooterText(chartType === 'bmi' ? 'cdcBmi' : 'who05'),
+      unavailable: true
+    };
+  }
+  let yMin = Math.min(...allY), yMax = Math.max(...allY);
+  const pad = Math.max((yMax - yMin) * 0.09, chartType === 'bmi' ? 0.8 : 1);
+  yMin = Math.max(0, yMin - pad); yMax += pad;
+  const W = 760, H = 390, left = 58, top = 42, right = 46, bottom = 74;
+  const plotW = W - left - right, plotH = H - top - bottom;
+  const xScale = value => left + (value / maxMonths) * plotW;
+  const yScale = value => top + (1 - (value - yMin) / (yMax - yMin)) * plotH;
+  const yTicks = Array.from({ length: 6 }, (_, i) => yMin + (yMax - yMin) * i / 5);
+  const xTicks = Array.from({ length: 7 }, (_, i) => maxMonths * i / 6);
+  const curveColors = ['#9aa8bd', '#9ec5f8', '#2563b8', '#9ec5f8', '#9aa8bd'];
+  const yUnit = chartType === 'bmi' ? 'kg/m²' : 'cm';
+  const title = config.title || 'Gráfico de crescimento';
+  const subtitle = growthChartSubtitle(chartType, child, sex);
+  const curves = referenceSeries.map((series, index) => `<path d="${svgPath(series.points, xScale, yScale)}" fill="none" stroke="${curveColors[index]}" stroke-width="${series.label === 'P50' ? 2.8 : 1.6}" stroke-dasharray="${series.label === 'P50' ? '' : '5 4'}"/><text x="${W-right+5}" y="${yScale(series.points[series.points.length - 1]?.y || yMin)+4}" class="curve-label">${series.label}</text>`).join('');
+  const sortedItems = [...visibleItems].sort((a, b) => (a.item.date || '').localeCompare(b.item.date || ''));
+  const latestId = sortedItems[sortedItems.length - 1]?.item?.id || sortedItems[sortedItems.length - 1]?.item?.date;
+  const points = visibleItems.map(point => {
+    const label = percentileLabel(point.result) || 'sem percentil';
+    const isLatest = (point.item.id && point.item.id === latestId) || point.item.date === latestId;
+    const radius = isLatest ? 8 : 5.5;
+    return `<g><circle cx="${xScale(point.x)}" cy="${yScale(point.y)}" r="${radius}" class="child-growth-point${isLatest ? ' latest' : ''}"><title>${formatDate(point.item.date)} — ${point.labelValue || formatLocaleNumber(point.y, 1)} — ${label}</title></circle><text x="${xScale(point.x)+8}" y="${yScale(point.y)-8}" class="point-label">${label}</text></g>`;
+  }).join('');
+  const gridY = yTicks.map(value => `<line x1="${left}" y1="${yScale(value)}" x2="${W-right}" y2="${yScale(value)}" class="chart-grid-line"/><text x="${left-8}" y="${yScale(value)+4}" text-anchor="end" class="axis-label">${formatLocaleNumber(value, chartType === 'bmi' ? 1 : 0)}</text>`).join('');
+  const gridX = xTicks.map(value => `<line x1="${xScale(value)}" y1="${top}" x2="${xScale(value)}" y2="${H-bottom}" class="chart-grid-line vertical"/><text x="${xScale(value)}" y="${H-bottom+24}" text-anchor="middle" class="axis-label">${value < 24 ? Math.round(value) + 'm' : formatLocaleNumber(value/12,1) + 'a'}</text>`).join('');
+  const footerKey = chartType === 'bmi' ? 'cdcBmi' : (maxMonths > 60 && chartType === 'height' ? 'who519' : 'who05');
+  const footer = GROWTH_FOOTERS[footerKey];
+  const footerSvg = `<text x="${left}" y="${H-42}" class="growth-footer-title">${escapeHtml(footer.line1)}</text>${footer.line2.split('\n').map((line, index) => `<text x="${left}" y="${H-26 + index * 12}" class="growth-footer-text">${escapeHtml(line)}</text>`).join('')}`;
+  const svgInner = `${growthChartSvgStyle()}<text x="${left}" y="18" class="chart-main-title">${escapeHtml(title)}</text><text x="${left}" y="34" class="chart-subtitle">${escapeHtml(subtitle)}</text><rect x="${left}" y="${top}" width="${plotW}" height="${plotH}" rx="12" class="chart-bg"/>${gridY}${gridX}${curves}${points}<text x="${left}" y="${top-8}" class="axis-title">${yUnit}</text><text x="${W-right}" y="${H-bottom+8}" text-anchor="end" class="axis-title">Idade</text>${footerSvg}`;
+  const html = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(title)}">${svgInner}</svg>`;
+  const latest = sortedItems[sortedItems.length - 1];
+  return {
+    html,
+    svgInner,
+    statusText: latest?.result && !latest.result.outOfRange ? `Último: ${percentileLabel(latest.result)}` : visibleItems.length ? 'Sem referência para o último registro' : 'Sem registros',
+    footerText: growthFooterText(footerKey),
+    footerKey,
+    unavailable: false,
+    width: W,
+    height: H
+  };
+}
+
+function renderGrowthChart(chartType) {
+  const config = GROWTH_CHART_TYPES.find(item => item.id === chartType);
+  if (!config) return;
+  const container = $(config.containerId);
+  const status = $(config.statusId);
+  const source = $(config.sourceId);
+  if (!container) return;
+  const view = buildGrowthChartView(chartType);
+  container.innerHTML = view.html;
+  if (status) status.textContent = view.statusText;
+  if (source) source.textContent = view.footerText.replace(/\n/g, ' · ');
+}
+
+function renderGrowthCharts() {
+  GROWTH_CHART_TYPES.forEach(chart => renderGrowthChart(chart.id));
 }
 
 function svgPath(points, xScale, yScale) {
@@ -2112,88 +2502,15 @@ function growthChartSvgStyle() {
     .chart-grid-line.vertical{stroke-dasharray:3 5}
     .axis-label{fill:#6b7890;font-size:11px;font-family:Inter,Arial,sans-serif}
     .axis-title{fill:#35445e;font-size:12px;font-weight:800;font-family:Inter,Arial,sans-serif}
+    .chart-main-title{fill:#17213a;font-size:15px;font-weight:800;font-family:Inter,Arial,sans-serif}
+    .chart-subtitle{fill:#62708a;font-size:11px;font-weight:600;font-family:Inter,Arial,sans-serif}
     .curve-label{fill:#61718d;font-size:10px;font-weight:800;font-family:Inter,Arial,sans-serif}
     .child-growth-point{fill:#ff9e2f;stroke:#ffffff;stroke-width:3;filter:drop-shadow(0 3px 5px rgba(255,158,47,.35))}
+    .child-growth-point.latest{fill:#ff7a00;stroke-width:4;r:8}
     .point-label{fill:#b65f00;font-size:10px;font-weight:900;font-family:Inter,Arial,sans-serif}
+    .growth-footer-title{fill:#35445e;font-size:9px;font-weight:800;font-family:Inter,Arial,sans-serif}
+    .growth-footer-text{fill:#6b7890;font-size:8px;font-family:Inter,Arial,sans-serif}
   </style>`;
-}
-
-function buildGrowthChartView(metric, child = currentChild()) {
-  const sex = childSexKey(child);
-  if (!child.nascimento || !sex) {
-    return {
-      html: '<div class="growth-empty">Cadastre a data de nascimento e o sexo da criança para exibir as curvas.</div>',
-      statusText: '',
-      sourceText: metric === 'weight' ? 'Referência: OMS. Peso por idade disponível até 10 anos.' : 'Referência: OMS. Altura por idade disponível até 19 anos.',
-      unavailable: true
-    };
-  }
-  const category = metric === 'weight' ? 'Peso' : 'Altura';
-  const items = child.milestones.filter(item => item.category === category).map(item => {
-    const days = ageDaysAt(child, item.date);
-    return { item, x: ageMonthsFromDays(days), y: metric === 'height' ? milestoneMeasurement(item) / 100 : milestoneMeasurement(item), result: milestonePercentile(item, child) };
-  }).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y));
-  const maxMonths = growthChartAgeLimit(metric, child, items.map(p => p.item));
-  const step = maxMonths <= 24 ? 1 : maxMonths <= 60 ? 2 : maxMonths <= 120 ? 4 : 6;
-  const referenceSeries = GROWTH_PERCENTILES.map(percentile => ({
-    ...percentile,
-    points: Array.from({ length: Math.floor(maxMonths / step) + 1 }, (_, index) => {
-      const month = Math.min(maxMonths, index * step);
-      return { x: month, y: chartReferencePoint(metric, sex, month, percentile.z) };
-    }).filter(point => Number.isFinite(point.y))
-  }));
-  const allY = referenceSeries.flatMap(series => series.points.map(point => point.y)).concat(items.filter(p => p.x <= maxMonths).map(p => p.y));
-  if (!allY.length) {
-    return {
-      html: '<div class="growth-empty">Referência indisponível para esta idade.</div>',
-      statusText: '',
-      sourceText: metric === 'weight' ? 'Referência: OMS. Peso por idade disponível até 10 anos.' : 'Referência: OMS. Altura por idade disponível até 19 anos.',
-      unavailable: true
-    };
-  }
-  let yMin = Math.min(...allY), yMax = Math.max(...allY);
-  const pad = Math.max((yMax - yMin) * 0.09, metric === 'weight' ? 0.5 : 0.03);
-  yMin = Math.max(0, yMin - pad); yMax += pad;
-  const W = 760, H = 350, left = 58, top = 24, right = 46, bottom = 50;
-  const plotW = W - left - right, plotH = H - top - bottom;
-  const xScale = value => left + (value / maxMonths) * plotW;
-  const yScale = value => top + (1 - (value - yMin) / (yMax - yMin)) * plotH;
-  const yTicks = Array.from({ length: 6 }, (_, i) => yMin + (yMax - yMin) * i / 5);
-  const xTicks = Array.from({ length: 7 }, (_, i) => maxMonths * i / 6);
-  const curveColors = ['#9aa8bd', '#9ec5f8', '#2563b8', '#9ec5f8', '#9aa8bd'];
-  const curves = referenceSeries.map((series, index) => `<path d="${svgPath(series.points, xScale, yScale)}" fill="none" stroke="${curveColors[index]}" stroke-width="${series.label === 'P50' ? 2.8 : 1.6}" stroke-dasharray="${series.label === 'P50' ? '' : '5 4'}"/><text x="${W-right+5}" y="${yScale(series.points[series.points.length - 1]?.y || yMin)+4}" class="curve-label">${series.label}</text>`).join('');
-  const points = items.filter(point => point.x <= maxMonths).map(point => {
-    const label = percentileLabel(point.result) || 'sem percentil';
-    return `<g><circle cx="${xScale(point.x)}" cy="${yScale(point.y)}" r="6" class="child-growth-point"><title>${formatDate(point.item.date)} — ${formatLocaleNumber(metric === 'height' ? point.y : point.y, 2)} ${metric === 'weight' ? 'kg' : 'm'} — ${label}</title></circle><text x="${xScale(point.x)+8}" y="${yScale(point.y)-8}" class="point-label">${label}</text></g>`;
-  }).join('');
-  const gridY = yTicks.map(value => `<line x1="${left}" y1="${yScale(value)}" x2="${W-right}" y2="${yScale(value)}" class="chart-grid-line"/><text x="${left-8}" y="${yScale(value)+4}" text-anchor="end" class="axis-label">${formatLocaleNumber(value, metric === 'weight' ? 1 : 2)}</text>`).join('');
-  const gridX = xTicks.map(value => `<line x1="${xScale(value)}" y1="${top}" x2="${xScale(value)}" y2="${H-bottom}" class="chart-grid-line vertical"/><text x="${xScale(value)}" y="${H-bottom+24}" text-anchor="middle" class="axis-label">${value < 24 ? Math.round(value) + 'm' : formatLocaleNumber(value/12,1) + 'a'}</text>`).join('');
-  const svgInner = `${growthChartSvgStyle()}<rect x="${left}" y="${top}" width="${plotW}" height="${plotH}" rx="12" class="chart-bg"/>${gridY}${gridX}${curves}${points}<text x="${left}" y="16" class="axis-title">${metric === 'weight' ? 'Peso (kg)' : 'Altura (m)'}</text><text x="${W-right}" y="${H-8}" text-anchor="end" class="axis-title">Idade</text>`;
-  const html = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de ${category.toLowerCase()} por idade">${svgInner}</svg>`;
-  const latest = [...items].sort((a,b) => (b.item.date || '').localeCompare(a.item.date || ''))[0];
-  return {
-    html,
-    svgInner,
-    statusText: latest?.result ? `Último: ${percentileLabel(latest.result)}` : items.length ? 'Sem referência para o último registro' : 'Sem registros',
-    sourceText: metric === 'weight' ? 'Referência: OMS. Peso por idade disponível até 10 anos.' : 'Referência: OMS. Altura por idade disponível até 19 anos.',
-    unavailable: false,
-    width: W,
-    height: H
-  };
-}
-
-function renderGrowthChart(metric) {
-  const container = metric === 'weight' ? $('weightGrowthChart') : $('heightGrowthChart');
-  const status = metric === 'weight' ? $('weightChartStatus') : $('heightChartStatus');
-  if (!container) return;
-  const view = buildGrowthChartView(metric);
-  container.innerHTML = view.html;
-  status.textContent = view.statusText;
-}
-
-function renderGrowthCharts() {
-  renderGrowthChart('weight');
-  renderGrowthChart('height');
 }
 
 window.editMilestone = function(id) {
@@ -2242,7 +2559,7 @@ function populateMilestoneCategories() {
 
 function milestoneCategoryOrder(category) {
   const index = DEFAULT_CATEGORIES.indexOf(category);
-  return index === -1 ? 3 : index;
+  return index === -1 ? DEFAULT_CATEGORIES.length : index;
 }
 
 function renderMilestones() {
@@ -2259,8 +2576,9 @@ function renderMilestones() {
   $('milestoneList').innerHTML = categories.map(category => `
     <h3 class="category-title">${escapeHtml(category)}</h3>
     ${byCategory[category].sort((a,b) => (a.date || '').localeCompare(b.date || '')).map(item => {
-      const percentile = milestonePercentile(item, child);
-      const percentileText = percentileLabel(percentile);
+      const summary = growthSummaryText(item, child);
+      const percentileText = percentileLabel(milestonePercentile(item, child));
+      const tracked = ['Peso', 'Altura', 'Perímetro cefálico'].includes(category);
       return `
       <article class="item milestone-card">
         ${item.photo ? `<img src="${fileRefUrl(item.photo)}" alt="${escapeHtml(item.title || category)}">` : ''}
@@ -2272,7 +2590,8 @@ function renderMilestones() {
           </div>
         </div>
         <small>${formatDate(item.date)} ${item.value ? '• ' + escapeHtml(item.value) : ''}</small>
-        ${percentileText ? `<span class="percentile-badge">Percentil: ${escapeHtml(percentileText)}</span>` : (category === 'Peso' || category === 'Altura') ? '<span class="percentile-badge neutral">Percentil indisponível</span>' : ''}
+        ${summary ? `<p class="growth-summary">${escapeHtml(summary)}</p>` : ''}
+        ${percentileText ? `<span class="percentile-badge">Percentil: ${escapeHtml(percentileText)}</span>` : tracked ? '<span class="percentile-badge neutral">Percentil indisponível</span>' : ''}
         ${item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}
       </article>`;
     }).join('')}
@@ -2582,15 +2901,26 @@ function addFormListeners() {
     if (!category) return showToast('Digite o nome da categoria personalizada.');
     const isWeight = category === 'Peso';
     const isHeight = category === 'Altura';
-    const isGrowth = isWeight || isHeight;
+    const isHead = category === 'Perímetro cefálico';
+    const isGrowth = isWeight || isHeight || isHead;
     let numericValue = null;
     let value = String(data.value || '').trim();
     let unit = '';
     if (isGrowth) {
       numericValue = parseLocaleNumber(value);
-      if (!Number.isFinite(numericValue) || numericValue <= 0) return showToast(`Informe um valor válido em ${isWeight ? 'kg' : 'metros'}.`);
-      unit = isWeight ? 'kg' : 'm';
-      value = `${formatLocaleNumber(numericValue, 2)} ${unit}`;
+      if (!Number.isFinite(numericValue) || numericValue <= 0) {
+        return showToast(`Informe um valor válido em ${isWeight ? 'kg' : isHead ? 'cm' : 'metros'}.`);
+      }
+      if (isWeight) {
+        unit = 'kg';
+        value = `${formatLocaleNumber(numericValue, 2)} ${unit}`;
+      } else if (isHead) {
+        unit = 'cm';
+        value = `${formatLocaleNumber(numericValue, 2)} ${unit}`;
+      } else {
+        unit = 'm';
+        value = `${formatLocaleNumber(numericValue, 2)} ${unit}`;
+      }
     }
     const selectedPhoto = form.elements.photo.files[0];
     const existingId = data.milestoneId;
@@ -2610,11 +2940,14 @@ function addFormListeners() {
         description: data.description,
         photo
       });
+      enrichMilestoneGrowthFields(item, child);
       showToast('Registro de evolução atualizado.');
     } else {
       const milestoneId = uid();
       const photo = selectedPhoto ? await storeLocalFile(selectedPhoto, '', { kind: 'milestone', childId: child.id, parentId: milestoneId, name: selectedPhoto.name || 'foto-evolucao' }) : null;
-      child.milestones.push({ id: milestoneId, category, date: data.date, title: isGrowth ? '' : data.title, value, numericValue, unit, description: data.description, photo });
+      const item = { id: milestoneId, category, date: data.date, title: isGrowth ? '' : data.title, value, numericValue, unit, description: data.description, photo };
+      enrichMilestoneGrowthFields(item, child);
+      child.milestones.push(item);
       showToast('Registro de evolução salvo.');
     }
     resetMilestoneForm();
@@ -3065,8 +3398,9 @@ async function generateSelectedChildPdf() {
     y = addSection(doc, 'MARCOS & EVOLUÇÃO', y, [34, 178, 125]);
     if (!child.milestones.length) y = addParagraph(doc, 'Nenhum marco cadastrado.', y);
     child.milestones.sort((a,b) => (a.date || '').localeCompare(b.date || '')).forEach(m => y = addParagraph(doc, evolutionRecordText(m, child), y));
-    y = await addEvolutionChartToPdf(doc, y, child, 'weight');
     y = await addEvolutionChartToPdf(doc, y, child, 'height');
+    y = await addEvolutionChartToPdf(doc, y, child, 'headCircumference');
+    y = await addEvolutionChartToPdf(doc, y, child, 'bmi');
   }
 
   if (sections.includes('memoriasFavoritas')) {
@@ -3173,28 +3507,31 @@ function addEvolutionChildData(doc, child, y) {
   return y;
 }
 
-function growthChartPdfSvg(metric, child) {
-  const view = buildGrowthChartView(metric, child);
-  const title = metric === 'weight' ? 'Peso por idade' : 'Altura por idade';
-  const description = metric === 'weight'
-    ? 'Curvas de referência da OMS e registros da criança.'
-    : 'Curvas de referência da OMS e registros da criança.';
+function growthChartPdfSvg(chartType, child) {
+  const config = GROWTH_CHART_TYPES.find(item => item.id === chartType) || {};
+  const view = buildGrowthChartView(chartType, child);
+  const title = config.title || 'Gráfico de crescimento';
+  const subtitle = childSexKey(child) ? growthChartSubtitle(chartType, child, childSexKey(child)) : '';
   const status = view.statusText || (view.unavailable ? '' : 'Sem registros');
   const statusBadge = status
     ? `<rect x="760" y="42" width="380" height="38" rx="19" fill="#eaf2ff"/><text x="950" y="66" text-anchor="middle" fill="#2f6ed0" font-size="18" font-weight="800" font-family="Inter,Arial,sans-serif">${escapeHtml(status)}</text>`
     : '';
+  const emptyMessage = view.html.replace(/<[^>]+>/g, '');
   const chart = view.unavailable
-    ? `<rect x="40" y="115" width="1120" height="500" rx="24" fill="#fbfdff" stroke="#dce7f8"/>
-       <text x="600" y="365" text-anchor="middle" fill="#62708a" font-size="28" font-weight="700" font-family="Inter,Arial,sans-serif">${view.html.replace(/<[^>]+>/g, '')}</text>`
-    : `<rect x="40" y="115" width="1120" height="500" rx="24" fill="#fbfdff" stroke="#dce7f8"/>
-       <svg x="70" y="140" width="1060" height="488" viewBox="0 0 ${view.width} ${view.height}">${view.svgInner}</svg>`;
+    ? `<rect x="40" y="115" width="1120" height="520" rx="24" fill="#fbfdff" stroke="#dce7f8"/>
+       <text x="600" y="375" text-anchor="middle" fill="#62708a" font-size="28" font-weight="700" font-family="Inter,Arial,sans-serif">${escapeHtml(emptyMessage)}</text>`
+    : `<rect x="40" y="115" width="1120" height="520" rx="24" fill="#fbfdff" stroke="#dce7f8"/>
+       <svg x="70" y="140" width="1060" height="508" viewBox="0 0 ${view.width} ${view.height}">${view.svgInner}</svg>`;
+  const footerLines = (view.footerText || growthFooterText('who05')).split('\n').map((line, index) =>
+    `<text x="40" y="${652 + index * 18}" fill="${index === 0 ? '#35445e' : '#62708a'}" font-size="${index === 0 ? 16 : 13}" font-weight="${index === 0 ? '800' : '500'}" font-family="Inter,Arial,sans-serif">${escapeHtml(line)}</text>`
+  ).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720">
     <rect width="1200" height="720" fill="#ffffff"/>
-    <text x="40" y="52" fill="#17213a" font-size="34" font-weight="800" font-family="Inter,Arial,sans-serif">${title}</text>
-    <text x="40" y="84" fill="#62708a" font-size="20" font-weight="500" font-family="Inter,Arial,sans-serif">${description}</text>
+    <text x="40" y="52" fill="#17213a" font-size="34" font-weight="800" font-family="Inter,Arial,sans-serif">${escapeHtml(title)}</text>
+    <text x="40" y="84" fill="#62708a" font-size="20" font-weight="500" font-family="Inter,Arial,sans-serif">${escapeHtml(subtitle)}</text>
     ${statusBadge}
     ${chart}
-    <text x="40" y="682" fill="#62708a" font-size="19" font-weight="600" font-family="Inter,Arial,sans-serif">${view.sourceText}</text>
+    ${footerLines}
   </svg>`;
 }
 
@@ -3216,11 +3553,12 @@ function svgToPngDataUrl(svg, width = 2400, height = 1440) {
   });
 }
 
-async function addEvolutionChartToPdf(doc, y, child, metric, options = {}) {
-  const title = options.title || (metric === 'weight' ? 'Peso por idade' : 'Altura por idade');
-  y = addSection(doc, title, y, metric === 'weight' ? [22, 110, 229] : [34, 178, 125]);
+async function addEvolutionChartToPdf(doc, y, child, chartType, options = {}) {
+  const config = GROWTH_CHART_TYPES.find(item => item.id === chartType) || {};
+  const title = options.title || config.title || 'Gráfico de crescimento';
+  y = addSection(doc, title, y, chartType === 'bmi' ? [255, 179, 0] : chartType === 'headCircumference' ? [134, 107, 255] : [34, 178, 125]);
   y = ensurePage(doc, y, 118);
-  const chartDataUrl = await svgToPngDataUrl(growthChartPdfSvg(metric, child));
+  const chartDataUrl = await svgToPngDataUrl(growthChartPdfSvg(chartType, child));
   addImageSafe(doc, chartDataUrl, 16, y, 178, 107);
   return y + 114;
 }
@@ -3233,8 +3571,12 @@ function evolutionRecordText(item, child) {
   const value = pdfCleanValue(item.value);
   if (title && title !== item.category) parts.push(title);
   if (value) parts.push(value);
-  const percentile = percentileLabel(milestonePercentile(item, child));
-  if (percentile) parts.push(`Percentil ${percentile}`);
+  const summary = growthSummaryText(item, child);
+  if (summary) parts.push(summary);
+  else {
+    const percentile = percentileLabel(milestonePercentile(item, child));
+    if (percentile) parts.push(`Percentil ${percentile}`);
+  }
   const description = pdfCleanValue(item.description);
   return `• ${parts.filter(Boolean).join(' - ')}${description ? `. ${description}` : ''}`;
 }
@@ -3339,8 +3681,9 @@ async function generateEvolutionPdf() {
 
   y = addEvolutionChildData(doc, child, y);
   y = addSelectedEvolutionPdfContent(doc, child, sections, y);
-  y = await addEvolutionChartToPdf(doc, y, child, 'weight');
   y = await addEvolutionChartToPdf(doc, y, child, 'height');
+  y = await addEvolutionChartToPdf(doc, y, child, 'headCircumference');
+  y = await addEvolutionChartToPdf(doc, y, child, 'bmi');
 
   y = addSection(doc, 'REGISTROS DE EVOLUÇÃO', y, [34, 178, 125]);
   if (!child.milestones.length) {

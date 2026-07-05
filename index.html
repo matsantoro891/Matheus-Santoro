@@ -11,11 +11,12 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/favicon.png" />
-  <link rel="stylesheet" href="styles.css?v=32" />
+  <link rel="stylesheet" href="styles.css?v=33" />
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script defer src="growth-reference.js"></script>
-  <script defer src="app.js?v=32"></script>
+  <script defer src="growth-reference-ext.js"></script>
+  <script defer src="app.js?v=33"></script>
 </head>
 <body>
   <header class="app-header">
@@ -336,7 +337,7 @@
     <section id="evolucao" class="tab-panel">
       <div class="section-head">
         <h2>Marcos & Evolução</h2>
-        <p>Acompanhe peso, altura, desenvolvimento motor e categorias personalizadas ao longo do tempo.</p>
+        <p>Acompanhe peso, altura, perímetro cefálico, desenvolvimento motor e categorias personalizadas ao longo do tempo.</p>
       </div>
       <article class="card">
         <div class="actions top-actions">
@@ -367,19 +368,27 @@
       <div class="growth-chart-grid">
         <article class="card growth-chart-card">
           <div class="growth-chart-head">
-            <div><h3>Peso por idade</h3><p>Curvas de referência da OMS e registros da criança.</p></div>
-            <span id="weightChartStatus" class="growth-status"></span>
-          </div>
-          <div id="weightGrowthChart" class="growth-chart"></div>
-          <small class="growth-source">Referência: OMS. Peso por idade disponível até 10 anos.</small>
-        </article>
-        <article class="card growth-chart-card">
-          <div class="growth-chart-head">
-            <div><h3>Altura por idade</h3><p>Curvas de referência da OMS e registros da criança.</p></div>
+            <div><h3>Altura por idade</h3><p>Curvas OMS (0–5 e 5–19 anos) e registros da criança.</p></div>
             <span id="heightChartStatus" class="growth-status"></span>
           </div>
           <div id="heightGrowthChart" class="growth-chart"></div>
-          <small class="growth-source">Referência: OMS. Altura por idade disponível até 19 anos.</small>
+          <small id="heightChartSource" class="growth-source"></small>
+        </article>
+        <article class="card growth-chart-card">
+          <div class="growth-chart-head">
+            <div><h3>Perímetro cefálico por idade</h3><p>Curvas OMS (0–5 anos) e registros da criança.</p></div>
+            <span id="headChartStatus" class="growth-status"></span>
+          </div>
+          <div id="headGrowthChart" class="growth-chart"></div>
+          <small id="headChartSource" class="growth-source"></small>
+        </article>
+        <article class="card growth-chart-card">
+          <div class="growth-chart-head">
+            <div><h3>IMC por idade</h3><p>Calculado automaticamente com peso e altura na mesma data (CDC 2–20 anos).</p></div>
+            <span id="bmiChartStatus" class="growth-status"></span>
+          </div>
+          <div id="bmiGrowthChart" class="growth-chart"></div>
+          <small id="bmiChartSource" class="growth-source"></small>
         </article>
       </div>
 
