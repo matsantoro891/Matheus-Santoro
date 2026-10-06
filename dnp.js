@@ -572,7 +572,7 @@ function renderDnp(opts = {}) {
     <article class="card">
       <h3>Etapa de referência</h3>
       ${reference.reason === 'missing-birth' ? '<p>Informe a data de nascimento no cadastro para o aplicativo indicar a etapa da idade cronológica.</p>' : ''}
-      ${reference.reason === 'before-first' ? '<p>Pela idade cronológica, a primeira etapa da cartilha (2 meses) ainda é futura. Você pode olhar as etapas, mas os itens não viram pendência.</p>' : ''}
+      ${reference.reason === 'before-first' ? '<p>Pela idade cronológica, a primeira etapa (2 meses) ainda é futura. Você pode olhar as etapas, mas os itens não viram pendência.</p>' : ''}
       ${reference.stage ? `<p>Pela idade cronológica, a etapa de referência é <strong>${escapeHtml(reference.stage.label)}</strong>.</p>` : ''}
       <p class="muted">Se a criança nasceu prematura, converse com o médico sobre qual idade usar na consulta.</p>
       <div class="dnp-stage-picker">
@@ -581,7 +581,7 @@ function renderDnp(opts = {}) {
           <span class="dnp-entry-arrow" aria-hidden="true">${dnpUi.stagePickerOpen ? '▲' : '▼'}</span>
         </button>
         ${dnpUi.stagePickerOpen ? `
-          <div class="dnp-stage-options" id="dnp-stage-options" role="listbox" aria-label="Etapas da cartilha">
+          <div class="dnp-stage-options" id="dnp-stage-options" role="listbox" aria-label="Etapas de desenvolvimento">
             ${DNP_CATALOG.stages.map(item => {
               const itemKind = dnpStageKind(item, reference);
               const selected = item.id === stage.id;
@@ -600,8 +600,7 @@ function renderDnp(opts = {}) {
       <div class="dnp-stage-head">
         <div>
           <h3>Marcos aos ${escapeHtml(stage.label)}</h3>
-          <p>${kind === 'future' ? 'Esta etapa ainda é futura para a idade cronológica. Você pode ler os itens, mas eles não ficam como pendência.' : 'Responda o que a família já observou. Não é obrigatório preencher etapas anteriores.'}</p>
-          <p class="muted">${escapeHtml(dnpStatusHint(child, stage))} “Não sei / não tive oportunidade” não conta como “ainda não faz”.</p>
+          ${kind === 'future' ? '<p>Esta etapa ainda é futura para a idade cronológica. Você pode ler os itens, mas eles não ficam como pendência.</p>' : ''}
         </div>
       </div>
       ${DNP_CATALOG.areas.map(area => renderDnpArea(child, stage, area, kind)).join('')}
@@ -727,7 +726,6 @@ function renderDnpActivityCard(child, activity) {
     <article class="dnp-activity-card ${dnpUi.pdfMissing?.activityIds?.includes(activity.id) ? 'dnp-missing' : ''}">
       <h4>${escapeHtml(activity.title)}</h4>
       <p>${escapeHtml(activity.text)}</p>
-      ${activity.flags.length ? '<p class="muted">Orientação da cartilha, pendente de revisão médica antes de ser tratada como regra definitiva no app.</p>' : ''}
       <div class="dnp-activity-actions">
         ${Object.values(DNP_ACTIVITY_STATUS).map(status => `
           <button type="button" class="${current.status === status.id ? 'primary' : 'secondary'}" data-dnp-action="set-activity" data-activity-id="${activity.id}" data-status="${status.id}">${escapeHtml(status.label)}</button>
@@ -1130,20 +1128,32 @@ function dnpRecurringAnswer(entry, key) {
   return String(entry[key] || '').trim();
 }
 
+function dnpPdfEmptyLabel() {
+  return 'Não preenchido';
+}
+
+function dnpApplicablePdfStages(child) {
+  const reference = dnpReferenceStage(child.nascimento);
+  if (!reference.stage) return [];
+  return DNP_CATALOG.stages.filter(stage => stage.months <= reference.stage.months);
+}
+
 function dnpDoctorSummary(child) {
   normalizeDnpState(child);
   const reference = dnpReferenceStage(child.nascimento);
-  const filledStages = DNP_CATALOG.stages.filter(stage => dnpMilestonesByStage(stage.id).some(item => child.dnp.answers[item.id]?.status)).map(stage => ({
+  const applicable = dnpApplicablePdfStages(child);
+  const stages = applicable.map(stage => ({
     id: stage.id,
     label: stage.label,
     months: stage.months,
-    items: dnpMilestonesByStage(stage.id).filter(item => child.dnp.answers[item.id]?.status).map(item => {
+    items: dnpMilestonesByStage(stage.id).map(item => {
       const answer = child.dnp.answers[item.id];
+      const filled = Boolean(answer?.status);
       return {
         text: item.text.replace(/\.$/, ''),
-        status: DNP_CATALOG.statuses[answer.status]?.label || answer.status,
-        note: String(answer.note || '').trim(),
-        positive: answer.status === 'does'
+        status: filled ? (DNP_CATALOG.statuses[answer.status]?.label || answer.status) : dnpPdfEmptyLabel(),
+        note: filled ? String(answer.note || '').trim() : '',
+        positive: answer?.status === 'does'
       };
     })
   }));
@@ -1154,33 +1164,36 @@ function dnpDoctorSummary(child) {
     { key: 'lostSkill', label: 'A criança deixou de fazer algo que fazia?' }
   ];
   const questions = questionDefs.map(def => {
-    let answer = '';
-    filledStages.slice().reverse().forEach(stage => {
-      const value = dnpRecurringAnswer(child.dnp.recurring[stage.id], def.key);
-      if (value && !answer) answer = value;
-    });
-    if (!answer) answer = dnpRecurringAnswer(child.dnp.recurring[reference.stage?.id], def.key);
-    return { question: def.label, answer: answer || 'Sem registro' };
+    let answer = dnpRecurringAnswer(child.dnp.recurring[reference.stage?.id], def.key);
+    if (!answer) {
+      applicable.slice().reverse().forEach(stage => {
+        const value = dnpRecurringAnswer(child.dnp.recurring[stage.id], def.key);
+        if (value && !answer) answer = value;
+      });
+    }
+    return { question: def.label, answer: answer || dnpPdfEmptyLabel() };
   });
-  const activityStages = DNP_CATALOG.stages.filter(stage => dnpActivitiesByStage(stage.id).some(item => child.dnp.activities[item.id]?.status));
-  const latestAct = activityStages[activityStages.length - 1] || reference.stage || filledStages[filledStages.length - 1] || DNP_CATALOG.stages[0];
   const activities = [];
-  DNP_CATALOG.stages.forEach(stage => {
+  applicable.forEach(stage => {
     dnpActivitiesByStage(stage.id).forEach(activity => {
       const current = child.dnp.activities[activity.id];
-      if (!current?.status) return;
+      const filled = Boolean(current?.status);
       activities.push({
         title: activity.title,
-        status: DNP_ACTIVITY_STATUS[current.status]?.label || current.status,
-        doubt: current.status === 'question' ? String(current.note || '').trim() : '',
-        positive: current.status === 'doing'
+        status: filled ? (DNP_ACTIVITY_STATUS[current.status]?.label || current.status) : dnpPdfEmptyLabel(),
+        doubt: current?.status === 'question' ? (String(current.note || '').trim() || dnpPdfEmptyLabel()) : '',
+        positive: current?.status === 'doing'
       });
     });
   });
+  const familyTexts = (items, pick) => {
+    const texts = items.map(pick).filter(Boolean);
+    return texts.length ? texts : [dnpPdfEmptyLabel()];
+  };
   const family = [
-    { label: 'Tenho uma preocupação', texts: child.dnp.concerns.map(item => String(item.description || '').trim()).filter(Boolean) },
-    { label: 'Percebi perda de uma habilidade', texts: child.dnp.skillLosses.map(item => String(item.note || item.skill || '').trim()).filter(Boolean) },
-    { label: 'Conquista avulsa', texts: child.dnp.extraAchievements.map(item => String(item.note || item.title || '').trim()).filter(Boolean) }
+    { label: 'Tenho uma preocupação', texts: familyTexts(child.dnp.concerns, item => String(item.description || '').trim()) },
+    { label: 'Percebi perda de uma habilidade', texts: familyTexts(child.dnp.skillLosses, item => String(item.note || item.skill || '').trim()) },
+    { label: 'Conquista avulsa', texts: familyTexts(child.dnp.extraAchievements, item => String(item.note || item.title || '').trim()) }
   ];
   return {
     name: typeof childDisplayName === 'function' ? childDisplayName(child) : `${child.nome || ''} ${child.sobrenome || ''}`.trim() || 'Criança sem nome',
@@ -1189,7 +1202,7 @@ function dnpDoctorSummary(child) {
     special: String(child.registroEspecial || '').trim() || 'Sem registro',
     reference: reference.stage ? reference.stage.label : 'Sem registro',
     accent: dnpPdfAccent(child),
-    filledStages,
+    stages,
     questions,
     activityTitle: (reference.stage?.months || 0) >= 15 ? 'Ajude seu filho(a) a aprender e crescer' : 'Ajude seu bebê a aprender e crescer',
     activities,
@@ -1239,7 +1252,8 @@ async function generateDnpDoctorPdf(child = dnpChild(), { download = true } = {}
   };
 
   const sectionTitle = (title) => {
-    ensure(12);
+    state.y += 5;
+    ensure(14);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     setInk(ink);
@@ -1251,23 +1265,24 @@ async function generateDnpDoctorPdf(child = dnpChild(), { download = true } = {}
     state.y += 6;
   };
 
+  const logoSize = 16.48;
   let logo = '';
   try {
     logo = typeof getAppLogoDataUrl === 'function' ? await getAppLogoDataUrl() : '';
     if (logo && typeof addImageSafeForPdf === 'function') {
-      await addImageSafeForPdf(doc, logo, (pageW - 16) / 2, state.y, 16, 16);
+      await addImageSafeForPdf(doc, logo, (pageW - logoSize) / 2, state.y, logoSize, logoSize);
     } else if (logo && typeof addImageSafe === 'function') {
-      addImageSafe(doc, logo, (pageW - 16) / 2, state.y, 16, 16);
+      addImageSafe(doc, logo, (pageW - logoSize) / 2, state.y, logoSize, logoSize);
     }
   } catch (error) {
     console.warn('Logo do resumo DNP não carregado.', error);
   }
-  state.y += 16;
+  state.y += 16.8;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
+  doc.setFontSize(12.36);
   setInk(ink);
   dnpPdfWrite(doc, 'cReScer juntos', pageW / 2, state.y, { align: 'center' });
-  state.y += 8;
+  state.y += 12;
   doc.setFontSize(16);
   dnpPdfWrite(doc, 'Desenvolvimento Neuropsicomotor', pageW / 2, state.y, { align: 'center' });
   state.y += 8;
@@ -1313,20 +1328,20 @@ async function generateDnpDoctorPdf(child = dnpChild(), { download = true } = {}
   state.y += 34;
 
   sectionTitle('Etapas preenchidas e marcos');
-  if (!summary.filledStages.length) {
+  if (!summary.stages.length) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9.5);
-    setInk(muted);
-    dnpPdfWrite(doc, 'Sem registro', margin, state.y);
+    setInk(ink);
+    dnpPdfWrite(doc, dnpPdfEmptyLabel(), margin, state.y);
     state.y += 8;
   } else {
-    const cols = Math.min(3, summary.filledStages.length);
+    const cols = Math.min(3, summary.stages.length);
     const gap = 4;
     const colW = (contentW - gap * (cols - 1)) / cols;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
-    for (let i = 0; i < summary.filledStages.length; i += cols) {
-      const row = summary.filledStages.slice(i, i + cols);
+    for (let i = 0; i < summary.stages.length; i += cols) {
+      const row = summary.stages.slice(i, i + cols);
       const heights = row.map(stage => {
         let h = 8;
         stage.items.forEach(item => {
@@ -1351,7 +1366,7 @@ async function generateDnpDoctorPdf(child = dnpChild(), { download = true } = {}
         y += 9;
         stage.items.forEach(item => {
           const color = dnpPdfStatusColor(item.positive, accent);
-          fill(item.positive ? accent : muted);
+          fill(item.positive ? accent : ink);
           doc.circle(x + 6, y + 1, 1.05, 'F');
           const textW = colW - 28;
           const textLines = dnpPdfLines(doc, item.text, textW);
@@ -1403,7 +1418,7 @@ async function generateDnpDoctorPdf(child = dnpChild(), { download = true } = {}
       qLines.forEach((lineText, lineIndex) => dnpPdfWrite(doc, lineText, x + 4, state.y + 5 + lineIndex * 3.4));
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.5);
-      setInk(item.answer === 'Sem registro' ? muted : ink);
+      setInk(ink);
       const aLines = dnpPdfLines(doc, item.answer, qW - 8);
       aLines.forEach((lineText, lineIndex) => dnpPdfWrite(doc, lineText, x + 4, state.y + 6 + qLines.length * 3.4 + lineIndex * 3.6));
     });
@@ -1414,15 +1429,15 @@ async function generateDnpDoctorPdf(child = dnpChild(), { download = true } = {}
   if (!summary.activities.length) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9.5);
-    setInk(muted);
-    dnpPdfWrite(doc, 'Sem registro', margin, state.y);
+    setInk(ink);
+    dnpPdfWrite(doc, dnpPdfEmptyLabel(), margin, state.y);
     state.y += 8;
   } else {
     summary.activities.forEach(item => {
       const doubtLines = item.doubt ? dnpPdfLines(doc, `Dúvida: ${item.doubt}`, contentW - 8) : [];
       const h = 8 + doubtLines.length * 3.4;
       ensure(h);
-      fill(item.positive ? accent : muted);
+      fill(item.positive ? accent : ink);
       doc.circle(margin + 2, state.y - 1, 1.05, 'F');
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
@@ -1436,7 +1451,7 @@ async function generateDnpDoctorPdf(child = dnpChild(), { download = true } = {}
       if (item.doubt) {
         doc.setFont('helvetica', 'italic');
         doc.setFontSize(8);
-        setInk(muted);
+        setInk(ink);
         doubtLines.forEach(lineText => {
           dnpPdfWrite(doc, lineText, margin + 6, state.y);
           state.y += 3.4;
@@ -1452,7 +1467,7 @@ async function generateDnpDoctorPdf(child = dnpChild(), { download = true } = {}
   const familyHeights = summary.family.map(item => {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
-    const texts = item.texts.length ? item.texts : ['Sem registro'];
+    const texts = item.texts.length ? item.texts : [dnpPdfEmptyLabel()];
     return 8 + texts.reduce((sum, text) => sum + dnpPdfLines(doc, text, fW - 8).length * 3.2, 0);
   });
   const familyH = Math.max(...familyHeights);
@@ -1468,12 +1483,12 @@ async function generateDnpDoctorPdf(child = dnpChild(), { download = true } = {}
     doc.setFontSize(8);
     setInk(ink);
     dnpPdfWrite(doc, item.label, x + 8, state.y + 6);
-    const texts = item.texts.length ? item.texts : ['Sem registro'];
+    const texts = item.texts.length ? item.texts : [dnpPdfEmptyLabel()];
     let y = state.y + 11;
     texts.forEach(text => {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
-      setInk(text === 'Sem registro' ? muted : ink);
+      setInk(ink);
       dnpPdfLines(doc, text, fW - 8).forEach(lineText => {
         dnpPdfWrite(doc, lineText, x + 4, y);
         y += 3.4;
