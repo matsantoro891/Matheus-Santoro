@@ -1114,23 +1114,6 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
   color: #fff;
   border-color: transparent;
 }
-.home-decor-strip {
-  display: none;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  align-items: center;
-  justify-items: center;
-  padding-block: 12px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-}
-.home-decor-strip .toy { display: none; }
-body[data-theme="infantil-masculino"] .home-decor-strip,
-body[data-theme="infantil-feminino"] .home-decor-strip { display: grid; }
-body[data-theme="infantil-masculino"] .toy-m,
-body[data-theme="infantil-feminino"] .toy-f { display: block; }
-body[data-theme="infantil-feminino"] .home-decor-strip {
-  background: linear-gradient(180deg, #fff 0%, #fff5fa 100%);
-}
 .home-theme-notice {
   display: flex;
   justify-content: space-between;
@@ -1140,7 +1123,6 @@ body[data-theme="infantil-feminino"] .home-decor-strip {
 .home-theme-notice[hidden] { display: none !important; }
 .home-theme-notice p { margin: 0; color: var(--ink); font-weight: 700; }
 .field-hint { display: block; margin-top: 6px; color: var(--muted); font-size: 0.86rem; font-weight: 650; }
-.toy { font-size: 3rem; line-height: 1; filter: drop-shadow(0 8px 16px rgba(60,90,150,0.12)); }
 .compact-panel { display: flex; justify-content: space-between; gap: 14px; align-items: center; }
 .compact-panel h3 { margin-bottom: 4px; }
 .compact-actions { margin-top: 0; }
@@ -1272,7 +1254,6 @@ body[data-theme="infantil-feminino"] .home-decor-strip {
   .home-shortcuts-grid { gap: 12px; }
   .home-nav-card { min-height: 76px; padding: 14px 14px; border-radius: 22px; }
   .home-nav-card .home-nav-icon { font-size: 1.5rem; }
-  .toy { font-size: 2.4rem; }
   .backup-buttons-row { grid-template-columns: 1fr; }
   .bottom-nav { width: calc(100vw - 16px); bottom: 8px; }
 }
