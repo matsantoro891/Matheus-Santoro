@@ -388,7 +388,7 @@ function renderDnp(opts = {}) {
   const name = child.nome ? `${child.nome} ${child.sobrenome || ''}`.trim() : 'Criança sem nome';
   const ageText = child.nascimento ? calculateAgeText(child.nascimento) : 'Cadastre a data de nascimento para calcular a idade.';
   const hasAlerts = child.dnp.concerns.length || child.dnp.skillLosses.length || counts.not_yet > 0;
-  const healthFilled = Boolean(child.dnp.healthOnce.premature || child.dnp.healthOnce.specialNeeds || child.problemas);
+  const specialRecord = String(child.registroEspecial || '').trim();
 
   root.innerHTML = `
     <article class="card dnp-child-card">
@@ -422,15 +422,11 @@ function renderDnp(opts = {}) {
     ` : ''}
 
     <article class="card">
-      <h3>Saúde e prematuridade</h3>
-      <p class="muted">Essas informações vêm do cadastro ou de um registro único desta área. Elas não se repetem em cada etapa e não alteram sozinhas a etapa de referência.</p>
-      ${child.problemas ? `<p><strong>Do cadastro:</strong> ${escapeHtml(child.problemas)}</p>` : '<p class="muted">O cadastro ainda não tem problemas de saúde ou necessidades especiais preenchidos.</p>'}
-      ${child.dnp.healthOnce.premature || child.dnp.healthOnce.specialNeeds ? `
-        <p><strong>Registro único desta área:</strong> ${escapeHtml(dnpHealthSummary(child))}</p>
-      ` : '<p class="muted">Prematuridade ainda não está no cadastro do aplicativo. Se quiser, registre uma vez abaixo. A etapa de referência continua usando a idade cronológica.</p>'}
+      <h3>Registro de prematuridade ou necessidade especial</h3>
+      <p class="dnp-special-record">${specialRecord ? escapeHtml(specialRecord) : 'Não há registro'}</p>
+      ${child.problemas ? `<p><strong>Problemas de saúde no cadastro:</strong> ${escapeHtml(child.problemas)}</p>` : ''}
       <div class="actions">
-        <button type="button" class="secondary" data-dnp-action="open-health">${healthFilled ? 'Atualizar registro único' : 'Registrar prematuridade ou necessidade especial'}</button>
-        ${!child.problemas ? '<button type="button" class="secondary" data-dnp-action="go-cadastro">Abrir cadastro da criança</button>' : ''}
+        <button type="button" class="secondary" data-dnp-action="go-cadastro">Abrir cadastro da criança</button>
       </div>
     </article>
 
@@ -454,7 +450,6 @@ function renderDnp(opts = {}) {
 
     ${dnpUi.dialog === 'concern' ? renderDnpConcernForm() : ''}
     ${dnpUi.dialog === 'loss' ? renderDnpLossForm() : ''}
-    ${dnpUi.dialog === 'health' ? renderDnpHealthForm(child) : ''}
     ${dnpUi.dialog === 'achievement' ? renderDnpAchievementForm(child, stage) : ''}
 
     <article class="card dnp-stage-card">
@@ -492,10 +487,10 @@ function renderDnp(opts = {}) {
   if (scroll != null) window.scrollTo({ top: scroll, behavior: 'instant' in window ? 'instant' : 'auto' });
 }
 
-function dnpHealthSummary(child) {
-  const health = child.dnp.healthOnce;
+function dnpLegacyHealthText(child) {
+  const health = child.dnp?.healthOnce || {};
   const premature = health.premature === 'yes' ? 'Nasceu prematuro' : health.premature === 'no' ? 'Não nasceu prematuro' : health.premature === 'unknown' ? 'Prematuridade ainda não confirmada pela família' : '';
-  return [premature, health.gestationalWeeks && `Idade gestacional aproximada: ${health.gestationalWeeks} semanas`, health.specialNeeds].filter(Boolean).join('. ');
+  return [premature, health.gestationalWeeks && `Idade gestacional aproximada: ${health.gestationalWeeks} semanas`, health.specialNeeds].filter(Boolean).join('\n');
 }
 
 function renderDnpArea(child, stage, area, kind) {
@@ -546,7 +541,7 @@ function renderDnpMilestone(child, item, kind) {
 
 function renderDnpRecurringForm(child, stage) {
   const entry = child.dnp.recurring[stage.id] || {};
-  const health = dnpHealthSummary(child);
+  const specialRecord = String(child.registroEspecial || '').trim();
   return `
     <form class="grid-form" data-dnp-form="recurring" data-stage-id="${stage.id}">
       <label class="wide">O que a família e a criança costumam fazer juntas?
@@ -571,7 +566,7 @@ function renderDnpRecurringForm(child, stage) {
       </label>
       <div class="wide dnp-health-reuse">
         <p><strong>Há necessidade especial de saúde ou prematuridade?</strong></p>
-        <p class="muted">${health || child.problemas ? `${escapeHtml([child.problemas, health].filter(Boolean).join(' '))} Se quiser complementar só esta etapa, use o campo abaixo.` : 'Essa informação ainda não está no cadastro. Use o registro único acima para não repetir em todas as etapas.'}</p>
+        <p class="muted">${specialRecord || child.problemas ? `${escapeHtml([child.problemas, specialRecord].filter(Boolean).join(' '))} Se quiser complementar só esta etapa, use o campo abaixo.` : 'Essa informação ainda não está no cadastro da criança.'}</p>
         <textarea name="specialHealthNote" rows="2" placeholder="Complemento só desta conversa, se necessário">${escapeHtml(entry.specialHealthNote || '')}</textarea>
       </div>
       <div class="actions wide">
@@ -648,32 +643,6 @@ function renderDnpLossForm() {
   `;
 }
 
-function renderDnpHealthForm(child) {
-  const health = child.dnp.healthOnce;
-  return `
-    <article class="card dnp-dialog-card">
-      <h3>Registro único de prematuridade ou necessidade especial</h3>
-      <p class="muted">Use só se essa informação ainda não estiver no cadastro. Ela não muda automaticamente a etapa de referência.</p>
-      <form class="grid-form" data-dnp-form="health">
-        <label>A criança nasceu prematura?
-          <select name="premature">
-            <option value="" ${!health.premature ? 'selected' : ''}></option>
-            <option value="yes" ${health.premature === 'yes' ? 'selected' : ''}>Sim</option>
-            <option value="no" ${health.premature === 'no' ? 'selected' : ''}>Não</option>
-            <option value="unknown" ${health.premature === 'unknown' ? 'selected' : ''}>Não sei</option>
-          </select>
-        </label>
-        <label>Idade gestacional aproximada, em semanas<input name="gestationalWeeks" value="${escapeHtml(health.gestationalWeeks || '')}" placeholder="Se souber" /></label>
-        <label class="wide">Necessidade especial de saúde<textarea name="specialNeeds" rows="3">${escapeHtml(health.specialNeeds || '')}</textarea></label>
-        <div class="actions wide">
-          <button type="submit" class="primary">Salvar registro único</button>
-          <button type="button" class="secondary" data-dnp-action="close-dialog">Cancelar</button>
-        </div>
-      </form>
-    </article>
-  `;
-}
-
 function renderDnpAchievementForm(child, stage) {
   const options = DNP_CATALOG.milestones
     .filter(item => {
@@ -728,7 +697,6 @@ function initDnp() {
     }
     if (action === 'open-concern') { dnpUi.dialog = 'concern'; renderDnp(); }
     if (action === 'open-loss') { dnpUi.dialog = 'loss'; renderDnp(); }
-    if (action === 'open-health') { dnpUi.dialog = 'health'; renderDnp(); }
     if (action === 'open-achievement') { dnpUi.dialog = 'achievement'; renderDnp(); }
     if (action === 'close-dialog') { dnpUi.dialog = ''; renderDnp(); }
     if (action === 'go-cadastro') switchTab('cadastro');
@@ -818,19 +786,6 @@ function initDnp() {
       showToast('Possível perda registrada neste aparelho. Esse histórico é preservado.');
       return;
     }
-    if (form.dataset.dnpForm === 'health') {
-      child.dnp.healthOnce = {
-        premature: data.premature || '',
-        gestationalWeeks: String(data.gestationalWeeks || '').trim(),
-        specialNeeds: String(data.specialNeeds || '').trim(),
-        updatedAt: dnpNow()
-      };
-      dnpUi.dialog = '';
-      dnpSave();
-      renderDnp();
-      showToast('Registro único salvo neste aparelho. A etapa de referência continua pela idade cronológica.');
-      return;
-    }
     if (form.dataset.dnpForm === 'achievement') {
       if (data.milestoneId) {
         dnpSetAnswer(data.milestoneId, {
@@ -866,8 +821,9 @@ function addDnpToChildPdf(doc, child, y) {
   y = addLine(doc, 'Idade cronológica', calculateAgeText(child.nascimento), y);
   const reference = dnpReferenceStage(child.nascimento);
   y = addLine(doc, 'Etapa de referência', reference.stage ? reference.stage.label : 'Ainda sem etapa cronológica', y);
-  if (child.dnp.healthOnce.premature || child.dnp.healthOnce.specialNeeds) {
-    y = addParagraph(doc, `Saúde/prematuridade (registro único): ${dnpHealthSummary(child)}`, y);
+  const specialRecord = String(child.registroEspecial || '').trim();
+  if (specialRecord) {
+    y = addParagraph(doc, `Prematuridade ou necessidade especial (cadastro): ${specialRecord}`, y);
   }
   child.dnp.concerns.forEach(item => {
     y = addParagraph(doc, `Preocupação (${formatDnpDateTime(item.createdAt)}): ${item.topic}. ${item.description} ${item.context || ''}`, y);

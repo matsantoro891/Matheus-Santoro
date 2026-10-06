@@ -53,7 +53,7 @@ function emptyChild() {
   return {
     id: uid(),
     nome: '', sobrenome: '', nascimento: '', sexo: '', tipoSanguineo: '',
-    problemas: '', alergias: '', mae: '', telefoneMae: '', pai: '', telefonePai: '',
+    problemas: '', registroEspecial: '', alergias: '', mae: '', telefoneMae: '', pai: '', telefonePai: '',
     emergenciaNome: '', emergenciaTelefone: '', pediatraNome: '', pediatraTelefone: '', pediatraEmail: '', clinicaPediatra: '',
     observacoes: '', miniBio: '', profilePhoto: '',
     themeMode: 'auto', themeGender: 'masculino', themeStage: 'bebe',
@@ -116,6 +116,9 @@ function normalizeChild(child) {
   child.letters ||= [];
   if (typeof normalizeDnpState === 'function') normalizeDnpState(child);
   else child.dnp ||= { catalogVersion: 1, healthOnce: {}, answers: {}, answerHistory: [], recurring: {}, concerns: [], skillLosses: [], activities: {}, activityHistory: [], extraAchievements: [] };
+  if (typeof child.registroEspecial !== 'string') {
+    child.registroEspecial = typeof dnpLegacyHealthText === 'function' ? dnpLegacyHealthText(child) : '';
+  }
   child.profilePhoto ||= '';
   child.miniBio ||= '';
   if (!['auto', 'manual', 'default'].includes(child.themeMode)) child.themeMode = 'auto';
