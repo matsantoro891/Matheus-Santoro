@@ -6,8 +6,8 @@ const DEFAULT_CATEGORIES = ['Peso', 'Altura', 'Perímetro cefálico', 'Desenvolv
 const THEME_STAGES = ['bebe', 'primeira-infancia', 'infancia', 'pre-adolescencia', 'adolescencia'];
 const THEME_GENDERS = ['masculino', 'feminino'];
 const THEME_IMAGES = {
-  masculino: 'themes/crescer-bg-masculino.png',
-  feminino: 'themes/crescer-bg-feminino.png'
+  masculino: 'themes/crescer-bg-masculino-vertical.png',
+  feminino: 'themes/crescer-bg-feminino-vertical.png'
 };
 const RETIRED_TABS = new Set(['memorias', 'agenda', 'favoritos']);
 const RETIRED_PDF_SECTIONS = new Set(['agenda', 'proximos', 'memoriasFavoritas', 'consultas', 'vacinas']);
