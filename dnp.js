@@ -543,12 +543,9 @@ function renderDnp(opts = {}) {
       </div>
     </article>
 
-    <div class="dnp-quick-actions">
-      ${['concern', 'loss'].map(type => renderDnpEntrySection(child, type)).join('')}
-    </div>
     <div class="dnp-try-entry">
       <button type="button" class="secondary dnp-entry-toggle" data-dnp-action="open-try-list">
-        <span>Atividades que quero experimentar${tryActivities.length ? ` · ${tryActivities.length}` : ''}</span>
+        <span>Atividades "Quero experimentar"${tryActivities.length ? ` · ${tryActivities.length}` : ''}</span>
         <span class="dnp-entry-arrow" aria-hidden="true">▼</span>
       </button>
       <p class="muted dnp-try-caption">As atividades marcadas como ‘Quero experimentar’ ficam reunidas ao final desta página para você acompanhar e marcar quando já estiverem fazendo.</p>
@@ -613,13 +610,20 @@ function renderDnp(opts = {}) {
       </div>
     </article>
 
+    <section class="dnp-family-records">
+      <h3>Para registrar e conversar com o médico</h3>
+      <div class="dnp-quick-actions">
+        ${['concern', 'loss', 'achievement'].map(type => renderDnpEntrySection(child, type)).join('')}
+      </div>
+    </section>
+
+    ${renderDnpTryList(child, tryActivities)}
+
     <article class="card">
       <h3>Linha do tempo desta criança</h3>
       <p class="muted">Novas respostas não apagam o que já foi registrado. Preocupações e possíveis perdas permanecem mesmo se o checklist mudar depois.</p>
       <div class="list dnp-timeline">${renderDnpTimeline(child)}</div>
     </article>
-
-    ${renderDnpTryList(child, tryActivities)}
   `;
 
   if (scroll != null) window.scrollTo({ top: scroll, behavior: 'instant' in window ? 'instant' : 'auto' });
@@ -741,7 +745,7 @@ function renderDnpTryList(child, openItems) {
   `;
   return `
     <article class="card dnp-try-list" id="dnp-try-list">
-      <h3>Atividades que quero experimentar</h3>
+      <h3>Atividades "Quero experimentar"</h3>
       ${renderGroup('Em aberto', openItems, false)}
       ${renderGroup('Realizadas', doneItems, true)}
     </article>
