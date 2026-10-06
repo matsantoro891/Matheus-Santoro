@@ -943,24 +943,23 @@ body[data-theme="infantil-feminino"] .heart-chip {
   margin-inline: calc(clamp(14px, 4vw, 32px) * -1);
   margin-top: -8px;
 }
-body[data-theme-mode="decorativo"] .home-hero {
-  min-height: 280px;
-  background-color: #163f86;
+body[data-theme-mode="decorativo"] #inicio {
+  background-color: transparent;
   background-image: var(--theme-bg);
-  background-size: cover;
-  background-position: center top;
   background-repeat: no-repeat;
+  background-size: 100% auto;
+  background-position: center top;
 }
-body[data-theme="infantil-feminino"][data-theme-mode="decorativo"] .home-hero {
-  background-color: #31468f;
+body[data-theme-mode="decorativo"] .home-hero {
+  background: transparent;
+  min-height: clamp(200px, 34vw, 380px);
+}
+body[data-theme-mode="decorativo"] #inicio .card,
+body[data-theme-mode="decorativo"] #inicio .home-nav-card {
+  background: #fff;
 }
 body[data-theme-mode="decorativo"] .home-hero::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(5,45,115,0.22) 0%, rgba(255,255,255,0.08) 48%, rgba(5,45,115,0.28) 100%);
+  content: none;
 }
 .hero-topbar {
   display: flex;
@@ -1014,10 +1013,9 @@ body[data-theme-mode="decorativo"] .hero-branding p {
   text-shadow: 0 2px 12px rgba(5, 25, 70, 0.42);
 }
 body[data-theme-mode="decorativo"] .hero-circle-btn {
-  background: rgba(5,45,115,0.28);
-  border-color: rgba(255,255,255,0.58);
-  color: #fff;
-  backdrop-filter: blur(8px);
+  background: #fff;
+  border-color: rgba(255,255,255,0.92);
+  color: var(--navy);
 }
 body[data-theme-stage="bebe"] .home-hero { background-position: center top; }
 body[data-theme-stage="primeira-infancia"] .home-hero,
@@ -1229,7 +1227,7 @@ body[data-theme="infantil-feminino"] .home-decor-strip {
   box-shadow: 0 16px 40px rgba(32,60,120,0.16);
   border-radius: 26px;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   padding: 8px;
   backdrop-filter: blur(10px);
 }

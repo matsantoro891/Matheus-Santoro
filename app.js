@@ -6,10 +6,10 @@ const DEFAULT_CATEGORIES = ['Peso', 'Altura', 'Perímetro cefálico', 'Desenvolv
 const THEME_STAGES = ['bebe', 'primeira-infancia', 'infancia', 'pre-adolescencia', 'adolescencia'];
 const THEME_GENDERS = ['masculino', 'feminino'];
 const THEME_IMAGES = {
-  masculino: 'themes/masculino/infancia.png',
-  feminino: 'themes/feminino/infancia.png'
+  masculino: 'themes/crescer-bg-masculino.png',
+  feminino: 'themes/crescer-bg-feminino.png'
 };
-const RETIRED_TABS = new Set(['memorias', 'agenda']);
+const RETIRED_TABS = new Set(['memorias', 'agenda', 'favoritos']);
 const RETIRED_PDF_SECTIONS = new Set(['agenda', 'proximos', 'memoriasFavoritas', 'consultas', 'vacinas']);
 const GROWTH_PERCENTILES = [
   { label: 'P3', z: -1.880793608 },
@@ -215,15 +215,15 @@ function applyTheme() {
   if (themed) document.body.dataset.themeGender = theme.gender;
   else delete document.body.dataset.themeGender;
   delete document.body.dataset.themeStage;
-  const hero = document.querySelector('.home-hero');
-  if (hero) {
-    hero.style.removeProperty('--theme-bg');
+  const home = document.querySelector('#inicio');
+  if (home) {
+    home.style.removeProperty('--theme-bg');
     if (themed) {
-      const versionedImage = `${theme.image}?v=3`;
+      const versionedImage = `${theme.image}?v=4`;
       const image = new Image();
       image.onload = () => {
         if (token !== themeLoadToken) return;
-        hero.style.setProperty('--theme-bg', `url("${versionedImage}")`);
+        home.style.setProperty('--theme-bg', `url("${versionedImage}")`);
         document.body.dataset.themeMode = 'decorativo';
       };
       image.onerror = () => {
@@ -1555,23 +1555,6 @@ function getSelectedImageMemoriesForPdf() {
   return memories.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 }
 
-function renderFavorites() {
-  const child = currentChild();
-  const recentMilestones = [...child.milestones].sort((a,b) => (b.date || '').localeCompare(a.date || '')).slice(0,3);
-  const milestonesEl = $('favoriteRecentMilestones');
-  if (milestonesEl) {
-    milestonesEl.innerHTML = recentMilestones.length ? recentMilestones.map(item => `<div class="item"><strong>${escapeHtml(item.title || item.category)}</strong><p>${formatDate(item.date)}${item.value ? ' — ' + escapeHtml(item.value) : ''}</p></div>`).join('') : '<p class="muted">Nenhum registro recente.</p>';
-  }
-  const stats = [
-    ['Evolução', child.milestones.length],
-    ['Cartas', (child.letters || []).length],
-    ['Medicações', child.medications.length],
-    ['Dias desde nascimento', child.nascimento ? Math.max(0, Math.floor((Date.now() - new Date(child.nascimento + 'T12:00:00').getTime()) / 86400000)) : '-']
-  ];
-  const statsEl = $('favoriteStats');
-  if (statsEl) statsEl.innerHTML = stats.map(([label, value]) => `<div class="stat-card"><strong>${value}</strong><span>${escapeHtml(String(label))}</span></div>`).join('');
-}
-
 function renderProfileSettings() {
   applyTheme();
 }
@@ -2580,7 +2563,6 @@ function renderAll() {
   renderAlbums();
   renderMemories();
   renderManualMemorySelection();
-  renderFavorites();
   renderProfileSettings();
   renderEvents();
   renderLetters();

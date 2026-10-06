@@ -1,11 +1,11 @@
-const CACHE_NAME = 'crescer-juntos-v38-cache';
+const CACHE_NAME = 'crescer-juntos-v39-cache';
 const CORE_ASSETS = [
   './',
   './index.html',
-  './styles.css?v=38',
+  './styles.css?v=39',
   './dnp-catalog.js?v=37',
   './dnp.js?v=37',
-  './app.js?v=38',
+  './app.js?v=39',
   './growth-reference.js?v=33',
   './growth-reference-ext.js?v=33',
   './manifest.json?v=32',
@@ -13,8 +13,8 @@ const CORE_ASSETS = [
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
   './icons/logo-main.png',
-  './themes/masculino/infancia.png?v=3',
-  './themes/feminino/infancia.png?v=3'
+  './themes/crescer-bg-masculino.png?v=4',
+  './themes/crescer-bg-feminino.png?v=4'
 ];
 
 self.addEventListener('install', event => {
