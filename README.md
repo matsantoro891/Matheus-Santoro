@@ -70,3 +70,9 @@ Correção específica da visualização de imagens no iPhone/Safari/PWA: carreg
 
 ## Versão 18
 Correção do visualizador de imagens no iPhone/Safari: modal visível antes da atribuição do DataURL, JPEG normalizado persistente no IndexedDB, fallback para o arquivo original e cache PWA unificado em v18.
+
+## Atualização — tela inicial, temas infantis e áreas retiradas da interface
+
+- A tela inicial usa os cards de Cadastro, Saúde, Evolução, Desenvolvimento Neuropsicomotor e Cartas para meu Filho, com a barra Home, Favoritos e Perfil.
+- Memórias e Agenda/Eventos saíram dos atalhos, menus e Favoritos. Os registros antigos continuam no armazenamento local e no backup, sem exclusão automática.
+- O tema visual segue o sexo já salvo no cadastro: infantil masculino ou infantil feminino. Sem sexo preenchido, a aparência fica simples e o aplicativo pede para completar o dado em Cadastro.

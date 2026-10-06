@@ -11,14 +11,14 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/favicon.png" />
-  <link rel="stylesheet" href="styles.css?v=37" />
+  <link rel="stylesheet" href="styles.css?v=38" />
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script defer src="growth-reference.js"></script>
   <script defer src="growth-reference-ext.js"></script>
   <script defer src="dnp-catalog.js?v=37"></script>
   <script defer src="dnp.js?v=37"></script>
-  <script defer src="app.js?v=37"></script>
+  <script defer src="app.js?v=38"></script>
 </head>
 <body>
   <header class="app-header">
@@ -26,7 +26,6 @@
       <img class="brand-logo" src="./icons/logo-main.png" alt="" aria-hidden="true" onerror="this.hidden=true" />
       <div>
         <h1>cReScer juntos</h1>
-        <p>Saúde, memórias, agenda e evolução da criança em um só lugar.</p>
       </div>
     </div>
     <div class="child-switcher">
@@ -37,17 +36,6 @@
   </header>
 
   <main class="layout">
-    <nav class="tabs" aria-label="Janelas principais">
-      <button class="tab-btn active" data-tab="inicio">Início</button>
-      <button class="tab-btn" data-tab="cadastro">Cadastro</button>
-      <button class="tab-btn" data-tab="saude">Saúde</button>
-      <button class="tab-btn" data-tab="memorias">Memórias</button>
-      <button class="tab-btn" data-tab="agenda">Calendário/Agenda</button>
-      <button class="tab-btn" data-tab="evolucao">Marcos & Evolução</button>
-      <button class="tab-btn" data-tab="favoritos">Favoritos</button>
-      <button class="tab-btn" data-tab="perfilconfig">Perfil / Configurações</button>
-    </nav>
-
     <section id="inicio" class="tab-panel active">
       <div class="social-home">
         <div class="home-hero cardless">
@@ -57,14 +45,7 @@
           </div>
           <div class="hero-branding">
             <img src="./icons/logo-main.png" alt="" aria-hidden="true" class="hero-logo" onerror="this.hidden=true" />
-            <h2>Crescer Juntos</h2>
-            <p>Cada momento, uma memória eterna.</p>
           </div>
-          <div class="hero-decor decor-cloud cloud-left"></div>
-          <div class="hero-decor decor-cloud cloud-right"></div>
-          <div class="hero-decor decor-star star-a">★</div>
-          <div class="hero-decor decor-star star-b">★</div>
-          <div class="hero-decor decor-heart">♥</div>
         </div>
 
         <article class="profile-social-card card">
@@ -82,27 +63,33 @@
           </div>
         </article>
 
+        <div id="homeThemeNotice" class="home-theme-notice card" hidden>
+          <p id="homeThemeNoticeText"></p>
+          <button type="button" id="homeThemeCadastroBtn" class="secondary">Abrir Cadastro</button>
+        </div>
+
         <div class="home-shortcuts-grid">
           <button type="button" class="home-nav-card" data-tab-target="cadastro"><span class="home-nav-icon">👶</span><span>Cadastro</span></button>
           <button type="button" class="home-nav-card" data-tab-target="saude"><span class="home-nav-icon">💙</span><span>Saúde</span></button>
-          <button type="button" class="home-nav-card active-card" data-tab-target="memorias"><span class="home-nav-icon">🖼️</span><span>Memórias</span></button>
-          <button type="button" class="home-nav-card" data-tab-target="agenda"><span class="home-nav-icon">📅</span><span>Eventos</span></button>
           <button type="button" class="home-nav-card full-width" data-tab-target="evolucao"><span class="home-nav-icon">📈</span><span>Evolução</span></button>
           <button type="button" class="home-nav-card full-width" data-tab-target="dnp"><span class="home-nav-icon">🧠</span><span>Desenvolvimento Neuropsicomotor</span></button>
           <button type="button" class="home-nav-card full-width" data-tab-target="cartas"><span class="home-nav-icon">💌</span><span>Cartas para meu Filho</span></button>
         </div>
 
-        <div class="home-decor-strip card">
-          <div class="toy toy-bear">🧸</div>
-          <div class="toy toy-blocks">🧩</div>
-          <div class="toy toy-star">⭐</div>
-          <div class="toy toy-horse">🐴</div>
+        <div id="homeDecorStrip" class="home-decor-strip card">
+          <div class="toy toy-m" aria-hidden="true">⚽</div>
+          <div class="toy toy-m" aria-hidden="true">📚</div>
+          <div class="toy toy-m" aria-hidden="true">🛴</div>
+          <div class="toy toy-m" aria-hidden="true">✏️</div>
+          <div class="toy toy-f" aria-hidden="true">📚</div>
+          <div class="toy toy-f" aria-hidden="true">🛼</div>
+          <div class="toy toy-f" aria-hidden="true">🌸</div>
+          <div class="toy toy-f" aria-hidden="true">⭐</div>
         </div>
 
         <article class="quick-panel card compact-panel">
           <div>
             <h3>PDF da criança</h3>
-            <p>Monte um PDF personalizado escolhendo as seções que entrarão no documento.</p>
           </div>
           <div class="actions compact-actions">
             <button type="button" id="openChildPdfBuilder" class="primary">Gerar PDF da Criança</button>
@@ -119,13 +106,8 @@
             <label><input type="checkbox" name="pdfSection" value="medicacoes" checked /> Medicações em uso</label>
             <label><input type="checkbox" name="pdfSection" value="exames" checked /> Exames</label>
             <label><input type="checkbox" name="pdfSection" value="arquivosMedicos" checked /> Arquivos Médicos</label>
-            <label><input type="checkbox" name="pdfSection" value="consultas" checked /> Consultas</label>
-            <label><input type="checkbox" name="pdfSection" value="vacinas" checked /> Vacinas</label>
-            <label><input type="checkbox" name="pdfSection" value="agenda" checked /> Calendário/Eventos</label>
-            <label><input type="checkbox" name="pdfSection" value="proximos" checked /> Próximos eventos da agenda</label>
             <label><input type="checkbox" name="pdfSection" value="evolucao" checked /> Evolução/Marcos</label>
             <label><input type="checkbox" name="pdfSection" value="dnp" /> Desenvolvimento Neuropsicomotor</label>
-            <label><input type="checkbox" name="pdfSection" value="memoriasFavoritas" checked /> Memórias favoritas/principais</label>
           </div>
           <div class="actions">
             <button type="button" id="generateSelectedChildPdf" class="primary">Criar PDF</button>
@@ -146,7 +128,6 @@
         <article class="backup-social-card card">
           <div class="backup-head">
             <h3>Backup e segurança</h3>
-            <p>Seus dados sempre protegidos e com você.</p>
           </div>
           <div class="backup-buttons-row">
             <button type="button" id="exportBackupBtn" class="backup-action-btn light">
@@ -179,7 +160,7 @@
         <label>Nome<input name="nome" autocomplete="given-name" required /></label>
         <label>Sobrenome<input name="sobrenome" autocomplete="family-name" /></label>
         <label>Data de nascimento<input name="nascimento" type="date" /></label>
-        <label>Sexo<select name="sexo"><option value="">Selecionar</option><option>Feminino</option><option>Masculino</option><option>Outro / não informado</option></select></label>
+        <label>Sexo<select name="sexo"><option value="">Selecionar</option><option>Feminino</option><option>Masculino</option><option>Outro / não informado</option></select><small class="field-hint">O tema infantil segue Feminino ou Masculino.</small></label>
         <label>Tipo sanguíneo<input name="tipoSanguineo" placeholder="Ex.: O+" /></label>
         <label>Problemas de saúde<textarea name="problemas" rows="3" placeholder="Diagnósticos, condições, histórico relevante"></textarea></label>
         <label>Alergias<textarea name="alergias" rows="3" placeholder="Medicamentos, alimentos, insetos, contato etc."></textarea></label>
@@ -254,7 +235,7 @@
       </article>
     </section>
 
-    <section id="memorias" class="tab-panel">
+    <section id="memorias" class="tab-panel retired-panel" hidden inert>
       <div class="section-head split-head">
         <div>
           <h2>Memórias</h2>
@@ -315,7 +296,7 @@
       <div id="memoryList" class="memory-grid"></div>
     </section>
 
-    <section id="agenda" class="tab-panel">
+    <section id="agenda" class="tab-panel retired-panel" hidden inert>
       <div class="section-head">
         <h2>Calendário/Agenda</h2>
         <p>Cadastre consultas, vacinas, exames, cursos, escola e outros eventos.</p>
@@ -406,11 +387,7 @@
         <p>Acesso rápido às informações mais importantes da criança.</p>
       </div>
       <div class="favorite-grid">
-        <article class="card"><h3>Próximos eventos</h3><div id="favoriteUpcomingEvents" class="list"></div></article>
         <article class="card"><h3>Evolução recente</h3><div id="favoriteRecentMilestones" class="list"></div></article>
-      </div>
-      <div class="favorite-grid">
-        <article class="card"><h3>Memórias favoritas</h3><div id="favoriteMemories" class="memory-grid list-view"></div></article>
         <article class="card"><h3>Estatísticas rápidas</h3><div id="favoriteStats" class="stats-grid"></div></article>
       </div>
     </section>
@@ -493,31 +470,7 @@
       <div class="two-columns">
         <article class="card">
           <h3>Personalização</h3>
-          <label>Tema visual<select id="themeModeSelect">
-            <option value="auto">Automático — recomendado</option>
-            <option value="manual">Escolher manualmente</option>
-            <option value="default">Padrão atual</option>
-          </select></label>
-          <div id="manualThemeControls" class="manual-theme-fields hidden">
-            <label>Fase<select id="themeStageSelect">
-              <option value="bebe">Bebê</option>
-              <option value="primeira-infancia">Primeira infância</option>
-              <option value="infancia">Infância</option>
-              <option value="pre-adolescencia">Pré-adolescência</option>
-              <option value="adolescencia">Adolescência</option>
-            </select></label>
-            <label>Estilo<select id="themeGenderSelect">
-              <option value="masculino">Masculino</option>
-              <option value="feminino">Feminino</option>
-            </select></label>
-            <div class="theme-preview-wrap">
-              <img id="themePreview" class="theme-preview" alt="Prévia do tema selecionado" />
-            </div>
-            <div class="actions">
-              <button type="button" id="applyManualThemeBtn" class="primary">Aplicar tema</button>
-            </div>
-          </div>
-          <div id="themeHint" class="theme-hint"></div>
+          <p id="themeHint" class="theme-hint">O tema infantil segue o sexo informado no cadastro.</p>
         </article>
         <article class="card">
           <h3>Crianças cadastradas</h3>
@@ -533,7 +486,6 @@
           <h3>PDFs e Relatórios</h3>
           <div class="actions">
             <button type="button" id="openChildPdfBuilderProfile" class="secondary">Resumo da criança</button>
-            <button type="button" id="openMemoriesPdfProfile" class="secondary">Álbum de memórias</button>
             <button type="button" id="openEvolutionPdfProfile" class="secondary">Relatório evolutivo</button>
           </div>
         </article>
@@ -554,36 +506,9 @@
       <div class="side-menu-head">
         <div>
           <strong>Crescer Juntos</strong>
-          <p>Perfil social da criança</p>
+          <p>Criança ativa</p>
         </div>
         <button type="button" id="closeSideMenu" class="hero-circle-btn">✕</button>
-      </div>
-      <div class="side-menu-group">
-        <h4>Personalização</h4>
-        <label>Tema<select id="themeModeSelectMenu">
-          <option value="auto">Automático — recomendado</option>
-          <option value="manual">Escolher manualmente</option>
-          <option value="default">Padrão atual</option>
-        </select></label>
-        <div id="manualThemeControlsMenu" class="manual-theme-fields hidden">
-          <label>Fase<select id="themeStageSelectMenu">
-            <option value="bebe">Bebê</option>
-            <option value="primeira-infancia">Primeira infância</option>
-            <option value="infancia">Infância</option>
-            <option value="pre-adolescencia">Pré-adolescência</option>
-            <option value="adolescencia">Adolescência</option>
-          </select></label>
-          <label>Estilo<select id="themeGenderSelectMenu">
-            <option value="masculino">Masculino</option>
-            <option value="feminino">Feminino</option>
-          </select></label>
-          <div class="theme-preview-wrap">
-            <img id="themePreviewMenu" class="theme-preview" alt="Prévia do tema selecionado" />
-          </div>
-          <div class="actions">
-            <button type="button" id="applyManualThemeBtnMenu" class="primary">Aplicar tema</button>
-          </div>
-        </div>
       </div>
       <div class="side-menu-group">
         <h4>Crianças cadastradas</h4>
@@ -592,11 +517,11 @@
       </div>
       <div class="side-menu-group">
         <h4>PDFs e Ferramentas</h4>
-        <div class="actions"><button type="button" id="drawerOpenRecordacoes" class="secondary">Criar Recordações</button><button type="button" id="drawerOpenQr" class="secondary">QR Code</button><button type="button" id="drawerOpenBackup" class="secondary">Backup</button></div>
+        <div class="actions"><button type="button" id="drawerOpenQr" class="secondary">QR Code</button><button type="button" id="drawerOpenBackup" class="secondary">Backup</button></div>
       </div>
       <div class="side-menu-group">
         <h4>Sobre</h4>
-        <p>Versão local do aplicativo com foco em saúde, memórias, agenda e evolução.</p>
+        <p>Versão local do aplicativo.</p>
       </div>
     </div>
   </aside>
