@@ -11,14 +11,14 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/favicon.png" />
-  <link rel="stylesheet" href="styles.css?v=58" />
+  <link rel="stylesheet" href="styles.css?v=59" />
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script defer src="growth-reference.js"></script>
   <script defer src="growth-reference-ext.js"></script>
   <script defer src="dnp-catalog.js?v=38"></script>
   <script defer src="dnp.js?v=50"></script>
-  <script defer src="app.js?v=45"></script>
+  <script defer src="app.js?v=46"></script>
 </head>
 <body>
   <header class="app-header">
@@ -46,6 +46,7 @@
           </div>
           <div class="hero-branding">
             <img src="./icons/logo-main.png" alt="" aria-hidden="true" class="hero-logo" onerror="this.hidden=true" />
+            <p class="hero-wordmark">cReScer juntos</p>
           </div>
         </div>
 
@@ -78,17 +79,13 @@
         </div>
 
         <article class="quick-panel card compact-panel">
-          <div>
-            <h3>PDF da criança</h3>
-          </div>
           <div class="actions compact-actions">
-            <button type="button" id="openChildPdfBuilder" class="primary">Gerar PDF da Criança</button>
-            <button type="button" id="makeQrBtn" class="secondary">Criar QR Code do Resumo</button>
+            <button type="button" id="openChildPdfBuilder" class="primary">Resumo da criança (PDF)</button>
           </div>
         </article>
 
         <article id="childPdfBuilder" class="card hidden">
-          <h3>Selecionar conteúdo do PDF</h3>
+          <h3>Selecionar conteúdo do PDF (QR code)</h3>
           <div class="checkbox-grid">
             <label><input type="checkbox" name="pdfSection" value="cadastro" checked /> Cadastro da criança</label>
             <label><input type="checkbox" name="pdfSection" value="fotoBio" checked /> Foto e mini bio</label>
@@ -101,13 +98,13 @@
           </div>
           <div class="actions">
             <button type="button" id="generateSelectedChildPdf" class="primary">Criar PDF</button>
+            <button type="button" id="generateSelectedQr" class="secondary">Criar QR Code</button>
             <button type="button" id="closeChildPdfBuilder" class="secondary">Fechar</button>
           </div>
         </article>
 
         <article id="qrBox" class="card hidden">
           <h3>QR Code do resumo</h3>
-          <p>O QR Code abre uma página compacta com dados essenciais. Para PDF completo por link externo, será necessário backend/nuvem.</p>
           <div id="qrCodeCanvas" class="qr-canvas"></div>
           <div class="qr-link-row">
             <input id="qrLink" readonly />
@@ -138,7 +135,6 @@
     <section id="cadastro" class="tab-panel">
       <div class="section-head">
         <h2>Cadastro da criança</h2>
-        <p>Preencha ou edite as informações principais. Use o botão salvar para gravar a criança cadastrada.</p>
       </div>
       <form id="childForm" class="grid-form">
         <div class="profile-editor wide">
@@ -151,17 +147,14 @@
         <label>Nome<input name="nome" autocomplete="given-name" required /></label>
         <label>Sobrenome<input name="sobrenome" autocomplete="family-name" /></label>
         <label>Data de nascimento<input name="nascimento" type="date" /></label>
-        <label>Sexo<select name="sexo"><option value="">Selecionar</option><option>Feminino</option><option>Masculino</option><option>Outro / não informado</option></select><small class="field-hint">O tema infantil segue Feminino ou Masculino.</small></label>
+        <label>Sexo<select name="sexo"><option value="">Selecionar</option><option>Feminino</option><option>Masculino</option><option>Outro / não informado</option></select></label>
         <label>Tipo sanguíneo<input name="tipoSanguineo" placeholder="Ex.: O+" /></label>
         <label>Problemas de saúde<textarea name="problemas" rows="3" placeholder="Diagnósticos, condições, histórico relevante"></textarea></label>
         <label>Alergias<textarea name="alergias" rows="3" placeholder="Medicamentos, alimentos, insetos, contato etc."></textarea></label>
         <label class="wide">Registro de prematuridade ou necessidade especial<textarea name="registroEspecial" rows="3"></textarea></label>
-        <label>Nome da mãe<input name="mae" /></label>
-        <label>Telefone da mãe<input name="telefoneMae" type="tel" /></label>
-        <label>Nome do pai<input name="pai" /></label>
-        <label>Telefone do pai<input name="telefonePai" type="tel" /></label>
+        <label>Nome do responsável<input name="mae" /></label>
+        <label>Telefone<input name="telefoneMae" type="tel" /></label>
         <label>Contato de emergência<input name="emergenciaNome" /></label>
-        <label>Telefone de emergência<input name="emergenciaTelefone" type="tel" /></label>
         <label>Nome do pediatra<input name="pediatraNome" /></label>
         <label>Telefone do pediatra<input name="pediatraTelefone" type="tel" /></label>
         <label>E-mail do pediatra<input name="pediatraEmail" type="email" /></label>
@@ -444,40 +437,22 @@
     <section id="perfilconfig" class="tab-panel">
       <div class="section-head">
         <h2>Perfil / Configurações</h2>
-        <p>Dados dos pais, personalização, segurança, exportações e ajuda.</p>
+        <p>Crianças cadastradas e resumo em PDF.</p>
       </div>
-      <div class="two-columns">
-        <article class="card">
-          <h3>Personalização</h3>
-          <p id="themeHint" class="theme-hint">O tema infantil segue o sexo informado no cadastro.</p>
-        </article>
-        <article class="card">
-          <h3>Crianças cadastradas</h3>
-          <label for="drawerChildSelect">Selecionar criança<select id="drawerChildSelect"></select></label>
-          <div class="actions">
-            <button type="button" id="newChildBtnPanel" class="secondary">Adicionar criança</button>
-            <button type="button" id="goToCadastroBtn" class="primary">Editar criança</button>
-          </div>
-        </article>
-      </div>
-      <div class="two-columns">
-        <article class="card">
-          <h3>PDFs e Relatórios</h3>
-          <div class="actions">
-            <button type="button" id="openChildPdfBuilderProfile" class="secondary">Resumo da criança</button>
-            <button type="button" id="openEvolutionPdfProfile" class="secondary">Relatório evolutivo</button>
-          </div>
-        </article>
-        <article class="card">
-          <h3>Ferramentas e Segurança</h3>
-          <div class="actions">
-            <button type="button" id="makeQrBtnProfile" class="secondary">QR Code</button>
-            <button type="button" id="exportBackupBtnProfile" class="secondary">Backup manual</button>
-            <button type="button" id="notifyBtnProfile" class="secondary">Permissões / Notificações</button>
-          </div>
-          <p class="muted">Face ID / Touch ID e sincronização em nuvem podem ser conectados em uma versão futura.</p>
-        </article>
-      </div>
+      <article class="card">
+        <h3>Crianças cadastradas</h3>
+        <label for="drawerChildSelect">Selecionar criança<select id="drawerChildSelect"></select></label>
+        <div class="actions">
+          <button type="button" id="newChildBtnPanel" class="secondary">Adicionar criança</button>
+          <button type="button" id="goToCadastroBtn" class="primary">Editar criança</button>
+        </div>
+      </article>
+      <article class="card">
+        <h3>PDFs e Relatórios</h3>
+        <div class="actions">
+          <button type="button" id="openChildPdfBuilderProfile" class="secondary">Resumo da criança (PDF)</button>
+        </div>
+      </article>
     </section>
 
   <aside id="sideMenu" class="side-menu hidden" aria-hidden="true">

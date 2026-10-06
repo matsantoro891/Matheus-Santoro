@@ -818,6 +818,13 @@ function fillChildForm() {
   Object.keys(child).forEach(key => {
     if (form.elements[key] && key !== 'profilePhoto') form.elements[key].value = child[key] || '';
   });
+  if (!(String(child.mae || '').trim() || String(child.telefoneMae || '').trim()) && (String(child.pai || '').trim() || String(child.telefonePai || '').trim())) {
+    if (form.elements.mae) form.elements.mae.value = child.pai || '';
+    if (form.elements.telefoneMae) form.elements.telefoneMae.value = child.telefonePai || '';
+  }
+  if (!String(child.emergenciaNome || '').trim() && String(child.emergenciaTelefone || '').trim() && form.elements.emergenciaNome) {
+    form.elements.emergenciaNome.value = child.emergenciaTelefone;
+  }
   setImagePreview($('profilePreview'), child.profilePhoto, 'Foto');
 }
 
@@ -2613,12 +2620,8 @@ function addFormListeners() {
   $('newChildBtnPanel')?.addEventListener('click', () => $('newChildBtn').click());
   $('newChildBtnMenu')?.addEventListener('click', () => { $('newChildBtn').click(); closeSideMenu(); });
   $('openChildPdfBuilderProfile')?.addEventListener('click', () => { switchTab('inicio'); openChildPdfBuilderAndScroll(); });
-  $('openEvolutionPdfProfile')?.addEventListener('click', () => generateEvolutionPdf());
   $('homeThemeCadastroBtn')?.addEventListener('click', () => switchTab('cadastro'));
-  $('makeQrBtnProfile')?.addEventListener('click', () => { switchTab('inicio'); generateQrCode(); });
-  $('exportBackupBtnProfile')?.addEventListener('click', exportBackup);
-  $('notifyBtnProfile')?.addEventListener('click', () => $('heroNotifyBtn')?.click());
-  $('drawerOpenQr')?.addEventListener('click', () => { switchTab('inicio', { closeMenu: true }); generateQrCode(); });
+  $('drawerOpenQr')?.addEventListener('click', () => { switchTab('inicio', { closeMenu: true }); openChildPdfBuilderAndScroll(); });
   $('drawerOpenBackup')?.addEventListener('click', () => { switchTab('inicio', { closeMenu: true }); document.querySelector('.backup-social-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
 
   $('newChildBtn').addEventListener('click', () => {
@@ -2653,8 +2656,31 @@ function addFormListeners() {
     const child = currentChild();
     const form = event.currentTarget;
     const data = new FormData(form);
+    const hadMae = Boolean(String(child.mae || '').trim() || String(child.telefoneMae || '').trim());
+    const hadPai = Boolean(String(child.pai || '').trim() || String(child.telefonePai || '').trim());
+    const paiOnly = !hadMae && hadPai;
+    const responsavelNome = String(data.get('mae') || '').trim();
+    const responsavelTel = String(data.get('telefoneMae') || '').trim();
+    const emergenciaDisplay = String(data.get('emergenciaNome') || '').trim();
+    const hadEmergenciaNome = Boolean(String(child.emergenciaNome || '').trim());
+    const hadEmergenciaTel = Boolean(String(child.emergenciaTelefone || '').trim());
     for (const [key, value] of data.entries()) {
       if (key !== 'profilePhoto') child[key] = typeof value === 'string' ? value.trim() : value;
+    }
+    if (paiOnly) {
+      child.pai = responsavelNome;
+      child.telefonePai = responsavelTel;
+      child.mae = '';
+      child.telefoneMae = '';
+    }
+    if (!hadEmergenciaNome && hadEmergenciaTel) {
+      const looksLikePhone = /^[\d\s()+.-]{8,}$/.test(emergenciaDisplay);
+      if (!emergenciaDisplay || looksLikePhone || emergenciaDisplay === String(child.emergenciaTelefone || '').trim()) {
+        child.emergenciaTelefone = emergenciaDisplay;
+        child.emergenciaNome = '';
+      } else {
+        child.emergenciaNome = emergenciaDisplay;
+      }
     }
     const file = form.elements.profilePhoto.files[0];
     if (file) {
@@ -2896,7 +2922,7 @@ function addFormListeners() {
   $('openChildPdfBuilder').addEventListener('click', openChildPdfBuilderAndScroll);
   $('closeChildPdfBuilder').addEventListener('click', () => $('childPdfBuilder').classList.add('hidden'));
   $('generateSelectedChildPdf').addEventListener('click', () => generateSelectedChildPdf());
-  $('makeQrBtn').addEventListener('click', generateQrCode);
+  $('generateSelectedQr')?.addEventListener('click', generateQrCode);
   $('copyQrLink').addEventListener('click', async () => {
     await navigator.clipboard.writeText($('qrLink').value).catch(() => {});
     showToast('Link copiado.');
@@ -3721,12 +3747,101 @@ function loadImageElement(src) {
   });
 }
 
+function clipQrText(value, max = 80) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function compactSummaryForQr(child) {
+  const sections = selectedPdfSections();
+  const compact = { nome: childDisplayName(child) };
+  const put = (key, value) => {
+    if (value == null || value === '') return;
+    if (Array.isArray(value) && !value.length) return;
+    compact[key] = value;
+  };
+  if (sections.includes('cadastro')) {
+    put('nascimento', formatDate(child.nascimento));
+    put('tipoSanguineo', child.tipoSanguineo);
+    put('mae', child.mae);
+    put('telefoneMae', child.telefoneMae);
+    put('pai', child.pai);
+    put('telefonePai', child.telefonePai);
+    put('emergencia', `${child.emergenciaNome || ''} ${child.emergenciaTelefone || ''}`.trim());
+    put('pediatra', `${child.pediatraNome || ''} ${child.pediatraTelefone || ''}`.trim());
+  }
+  if (sections.includes('fotoBio')) put('miniBio', clipQrText(child.miniBio, 120));
+  if (sections.includes('saude')) {
+    put('alergias', clipQrText(child.alergias, 120));
+    put('problemas', clipQrText(child.problemas, 120));
+  }
+  if (sections.includes('medicacoes')) {
+    put('medicacoes', child.medications.map(m => clipQrText(`${m.nome} - ${m.dose || ''} - ${m.frequencia || ''}`, 90)).filter(Boolean).slice(0, 6));
+  }
+  if (sections.includes('exames')) {
+    put('exames', child.exams.map(item => clipQrText([formatDate(item.data), item.nome].filter(Boolean).join(' - '), 90)).filter(Boolean).slice(0, 6));
+  }
+  if (sections.includes('arquivosMedicos')) {
+    put('arquivosMedicos', child.medicalFiles.map(item => clipQrText(item.title || 'Documento', 90)).filter(Boolean).slice(0, 6));
+  }
+  if (sections.includes('evolucao')) {
+    put('evolucao', child.milestones.map(item => clipQrText(evolutionRecordText(item, child).replace(/^•\s*/, ''), 90)).filter(Boolean).slice(0, 6));
+  }
+  if (sections.includes('dnp')) put('dnp', 'Desenvolvimento Neuropsicomotor selecionado no resumo.');
+  return compact;
+}
+
+function cropCanvasWhiteMargin(source, margin) {
+  const ctx = source.getContext('2d');
+  const { width, height } = source;
+  const data = ctx.getImageData(0, 0, width, height).data;
+  let minX = width, minY = height, maxX = 0, maxY = 0;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const i = (y * width + x) * 4;
+      if (data[i] < 248 || data[i + 1] < 248 || data[i + 2] < 248) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < minX) return source;
+  const x0 = Math.max(0, minX - margin);
+  const y0 = Math.max(0, minY - margin);
+  const w = Math.min(width, maxX + 1 + margin) - x0;
+  const h = Math.min(height, maxY + 1 + margin) - y0;
+  if (w >= width && h >= height) return source;
+  const out = document.createElement('canvas');
+  out.width = w;
+  out.height = h;
+  out.getContext('2d').drawImage(source, x0, y0, w, h, 0, 0, w, h);
+  return out;
+}
+
+function canvasToPngBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('PNG indisponível')), 'image/png');
+  });
+}
+
+function canSharePngFile(file) {
+  if (!navigator.share || !navigator.canShare) return false;
+  const coarse = window.matchMedia?.('(pointer: coarse)').matches;
+  if (!coarse && !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) return false;
+  try { return navigator.canShare({ files: [file] }); } catch { return false; }
+}
+
 async function buildBrandedQrCanvas(link, name, qrSize = 240) {
-  const padTop = Math.round(qrSize * 0.08);
-  const nameBand = Math.round(qrSize * 0.22);
+  const quiet = Math.max(16, Math.round(qrSize * 0.06));
+  const fontSize = Math.max(16, Math.round(qrSize * 0.055));
+  const nameGap = Math.max(8, Math.round(quiet * 0.45));
+  const nameBand = fontSize + Math.max(6, Math.round(quiet * 0.25));
   const canvas = document.createElement('canvas');
-  canvas.width = qrSize + padTop * 2;
-  canvas.height = qrSize + padTop + nameBand;
+  canvas.width = qrSize + quiet * 2;
+  canvas.height = quiet + qrSize + nameGap + nameBand + quiet;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -3737,7 +3852,7 @@ async function buildBrandedQrCanvas(link, name, qrSize = 240) {
   try {
     new QRCode(holder, qrCodeOptions(link, qrSize));
     const qrNode = await waitForQrNode(holder);
-    ctx.drawImage(qrNode, padTop, padTop, qrSize, qrSize);
+    ctx.drawImage(qrNode, quiet, quiet, qrSize, qrSize);
 
     let logoSrc = '';
     try { logoSrc = await getAppLogoDataUrl(); } catch (error) { logoSrc = ''; }
@@ -3745,19 +3860,19 @@ async function buildBrandedQrCanvas(link, name, qrSize = 240) {
       const logo = await loadImageElement(logoSrc);
       const logoSize = Math.round(qrSize * 0.18);
       const logoPad = Math.max(6, Math.round(qrSize * 0.02));
-      const lx = padTop + (qrSize - logoSize) / 2;
-      const ly = padTop + (qrSize - logoSize) / 2;
+      const lx = quiet + (qrSize - logoSize) / 2;
+      const ly = quiet + (qrSize - logoSize) / 2;
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(lx - logoPad, ly - logoPad, logoSize + logoPad * 2, logoSize + logoPad * 2);
       ctx.drawImage(logo, lx, ly, logoSize, logoSize);
     }
 
     ctx.fillStyle = '#17213a';
-    ctx.font = `700 ${Math.max(14, Math.round(qrSize * 0.075))}px Inter, Arial, sans-serif`;
+    ctx.font = `700 ${fontSize}px Inter, Arial, sans-serif`;
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(name, canvas.width / 2, padTop + qrSize + nameBand / 2, canvas.width - padTop * 2);
-    return canvas;
+    ctx.textBaseline = 'top';
+    ctx.fillText(name, canvas.width / 2, quiet + qrSize + nameGap, canvas.width - quiet * 2);
+    return cropCanvasWhiteMargin(canvas, quiet);
   } finally {
     holder.remove();
   }
@@ -3766,13 +3881,7 @@ async function buildBrandedQrCanvas(link, name, qrSize = 240) {
 async function generateQrCode() {
   switchTab('inicio', { scroll: false });
   const child = currentChild();
-  const compact = {
-    nome: childDisplayName(child), nascimento: formatDate(child.nascimento), tipoSanguineo: child.tipoSanguineo,
-    alergias: child.alergias, problemas: child.problemas, mae: child.mae, telefoneMae: child.telefoneMae,
-    pai: child.pai, telefonePai: child.telefonePai, emergencia: `${child.emergenciaNome || ''} ${child.emergenciaTelefone || ''}`.trim(),
-    pediatra: `${child.pediatraNome || ''} ${child.pediatraTelefone || ''}`.trim(),
-    medicacoes: child.medications.map(m => `${m.nome} - ${m.dose || ''} - ${m.frequencia || ''}`).slice(0, 8)
-  };
+  const compact = compactSummaryForQr(child);
   const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(compact))));
   const link = `${location.origin}${location.pathname}#resumo=${encoded}`;
   $('qrBox').classList.remove('hidden');
@@ -3800,12 +3909,26 @@ async function downloadQrImage() {
   if (!link) return showToast('Gere o QR Code primeiro.');
   if (!window.QRCode) return showToast('Biblioteca de QR Code ainda carregando.');
   const name = childDisplayName(currentChild());
+  const filename = `qr-${safeFileName(name)}.png`;
   try {
     const canvas = await buildBrandedQrCanvas(link, name, 480);
+    const blob = await canvasToPngBlob(canvas);
+    const file = new File([blob], filename, { type: 'image/png' });
+    if (canSharePngFile(file)) {
+      try {
+        await navigator.share({ files: [file], title: name });
+        showToast('Escolha Salvar Imagem para guardar o QR Code.');
+        return;
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+      }
+    }
+    const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
-    anchor.href = canvas.toDataURL('image/png');
-    anchor.download = `qr-${safeFileName(name)}.png`;
+    anchor.href = url;
+    anchor.download = filename;
     anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
     showToast('Imagem do QR Code baixada.');
   } catch (error) {
     console.warn(error);
@@ -3838,7 +3961,7 @@ function maybeRenderSharedSummary() {
 }
 
 function labelFromKey(key) {
-  const labels = { nome: 'Nome', nascimento: 'Nascimento', tipoSanguineo: 'Tipo sanguíneo', alergias: 'Alergias', problemas: 'Problemas de saúde', mae: 'Mãe', telefoneMae: 'Telefone da mãe', pai: 'Pai', telefonePai: 'Telefone do pai', emergencia: 'Emergência', pediatra: 'Pediatra', medicacoes: 'Medicações', proximosEventos: 'Próximos eventos' };
+  const labels = { nome: 'Nome', nascimento: 'Nascimento', tipoSanguineo: 'Tipo sanguíneo', alergias: 'Alergias', problemas: 'Problemas de saúde', mae: 'Mãe', telefoneMae: 'Telefone da mãe', pai: 'Pai', telefonePai: 'Telefone do pai', emergencia: 'Emergência', pediatra: 'Pediatra', medicacoes: 'Medicações', exames: 'Exames', arquivosMedicos: 'Arquivos médicos', evolucao: 'Evolução/Marcos', miniBio: 'Mini bio', dnp: 'Desenvolvimento Neuropsicomotor', proximosEventos: 'Próximos eventos' };
   return labels[key] || key;
 }
 
