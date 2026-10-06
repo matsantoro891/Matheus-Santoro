@@ -33,7 +33,7 @@ button, .import-label { cursor: pointer; }
   justify-content: space-between;
   gap: 18px;
   align-items: center;
-  padding: 18px clamp(16px, 4vw, 40px);
+  padding: 18px max(clamp(16px, 4vw, 40px), env(safe-area-inset-right)) 18px max(clamp(16px, 4vw, 40px), env(safe-area-inset-left));
   background: rgba(244, 248, 255, 0.9);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--line);
@@ -59,7 +59,7 @@ button, .import-label { cursor: pointer; }
 .layout {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 20px clamp(14px, 4vw, 32px) 90px;
+  padding: 20px max(clamp(14px, 4vw, 32px), env(safe-area-inset-right)) 90px max(clamp(14px, 4vw, 32px), env(safe-area-inset-left));
 }
 
 .tabs {
@@ -1201,7 +1201,7 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
 .bottom-nav {
   position: fixed;
   left: 50%;
-  bottom: 10px;
+  bottom: max(10px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
   width: min(560px, calc(100vw - 20px));
   z-index: 120;
@@ -1266,7 +1266,7 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
   .home-nav-card { min-height: 76px; padding: 14px 14px; border-radius: 22px; }
   .home-nav-card .home-nav-icon { font-size: 1.5rem; }
   .backup-buttons-row { grid-template-columns: 1fr; }
-  .bottom-nav { width: calc(100vw - 16px); bottom: 8px; }
+  .bottom-nav { width: calc(100vw - 16px); bottom: max(8px, env(safe-area-inset-bottom)); }
 }
 .hero-circle-btn,
 .camera-badge,
@@ -1611,7 +1611,11 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
 .dnp-entry-panel { margin-bottom: 0; display: grid; gap: 12px; }
 .dnp-entry-panel .list { margin-top: 0; }
 .dnp-entry-item .dnp-entry-text { color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
-.dnp-timeline .item { align-items: flex-start; }
+.dnp-timeline .item { align-items: flex-start; overflow-wrap: anywhere; }
+@media (pointer: coarse) {
+  #dnp input, #dnp select, #dnp textarea { font-size: 1rem; }
+  body:has(#dnp :is(textarea, select, input:not([type="radio"]):not([type="checkbox"])):focus) .bottom-nav { display: none; }
+}
 @media (max-width: 720px) {
   .dnp-activity-grid, .dnp-status-stack { grid-template-columns: 1fr; align-items: stretch; }
   .dnp-child-top, .dnp-status-stack { align-items: stretch; }
