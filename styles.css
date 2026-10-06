@@ -381,7 +381,8 @@ button, .import-label {
 .checkbox-grid input, .manual-list input { width: auto; }
 .manual-list { display: grid; gap: 10px; max-height: 260px; overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 16px; margin: 12px 0; }
 
-.qr-canvas { display: inline-grid; padding: 12px; border: 1px solid var(--line); border-radius: 18px; background: white; margin: 8px 0; }
+.qr-canvas { display: inline-grid; justify-items: center; padding: 12px; border: 1px solid var(--line); border-radius: 18px; background: white; margin: 8px 0; }
+.qr-branded-canvas { width: 220px; height: auto; display: block; }
 .qr-link-row { display: flex; gap: 10px; margin-top: 8px; min-width: 0; flex-wrap: wrap; }
 .qr-link-row input { flex: 1; min-width: 0; width: 100%; overflow: hidden; text-overflow: ellipsis; }
 

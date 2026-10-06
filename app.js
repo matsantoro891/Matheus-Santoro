@@ -3692,7 +3692,78 @@ function qrCodeOptions(text, size) {
   return options;
 }
 
-function generateQrCode() {
+function waitForQrNode(holder) {
+  return new Promise((resolve, reject) => {
+    const existing = holder.querySelector('canvas, img');
+    if (existing) return resolve(existing);
+    const observer = new MutationObserver(() => {
+      const node = holder.querySelector('canvas, img');
+      if (!node) return;
+      observer.disconnect();
+      resolve(node);
+    });
+    observer.observe(holder, { childList: true, subtree: true });
+    setTimeout(() => {
+      observer.disconnect();
+      const node = holder.querySelector('canvas, img');
+      if (node) resolve(node);
+      else reject(new Error('QR não gerado'));
+    }, 1500);
+  });
+}
+
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
+  });
+}
+
+async function buildBrandedQrCanvas(link, name, qrSize = 240) {
+  const padTop = Math.round(qrSize * 0.08);
+  const nameBand = Math.round(qrSize * 0.22);
+  const canvas = document.createElement('canvas');
+  canvas.width = qrSize + padTop * 2;
+  canvas.height = qrSize + padTop + nameBand;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:absolute;left:-9999px;top:-9999px';
+  document.body.appendChild(holder);
+  try {
+    new QRCode(holder, qrCodeOptions(link, qrSize));
+    const qrNode = await waitForQrNode(holder);
+    ctx.drawImage(qrNode, padTop, padTop, qrSize, qrSize);
+
+    let logoSrc = '';
+    try { logoSrc = await getAppLogoDataUrl(); } catch (error) { logoSrc = ''; }
+    if (logoSrc) {
+      const logo = await loadImageElement(logoSrc);
+      const logoSize = Math.round(qrSize * 0.18);
+      const logoPad = Math.max(6, Math.round(qrSize * 0.02));
+      const lx = padTop + (qrSize - logoSize) / 2;
+      const ly = padTop + (qrSize - logoSize) / 2;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(lx - logoPad, ly - logoPad, logoSize + logoPad * 2, logoSize + logoPad * 2);
+      ctx.drawImage(logo, lx, ly, logoSize, logoSize);
+    }
+
+    ctx.fillStyle = '#17213a';
+    ctx.font = `700 ${Math.max(14, Math.round(qrSize * 0.075))}px Inter, Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(name, canvas.width / 2, padTop + qrSize + nameBand / 2, canvas.width - padTop * 2);
+    return canvas;
+  } finally {
+    holder.remove();
+  }
+}
+
+async function generateQrCode() {
   switchTab('inicio', { scroll: false });
   const child = currentChild();
   const compact = {
@@ -3707,70 +3778,30 @@ function generateQrCode() {
   $('qrBox').classList.remove('hidden');
   $('qrLink').value = link;
   $('qrCodeCanvas').innerHTML = '';
-  if (window.QRCode) {
-    new QRCode($('qrCodeCanvas'), qrCodeOptions(link, 190));
-    showToast('QR Code criado.');
-  } else {
+  if (!window.QRCode) {
     showToast('Biblioteca de QR Code ainda carregando.');
+    $('qrBox').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  try {
+    const canvas = await buildBrandedQrCanvas(link, childDisplayName(child), 220);
+    canvas.className = 'qr-branded-canvas';
+    $('qrCodeCanvas').appendChild(canvas);
+    showToast('QR Code criado.');
+  } catch (error) {
+    console.warn(error);
+    showToast('Não foi possível criar o QR Code.');
   }
   $('qrBox').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function loadImageElement(src) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = reject;
-    image.src = src;
-  });
 }
 
 async function downloadQrImage() {
   const link = $('qrLink')?.value;
   if (!link) return showToast('Gere o QR Code primeiro.');
   if (!window.QRCode) return showToast('Biblioteca de QR Code ainda carregando.');
-  const child = currentChild();
-  const name = childDisplayName(child);
-  const canvasSize = 720;
-  const qrSize = 480;
-  const canvas = document.createElement('canvas');
-  canvas.width = canvasSize;
-  canvas.height = canvasSize + 88;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  const holder = document.createElement('div');
-  holder.style.cssText = 'position:absolute;left:-9999px;top:-9999px';
-  document.body.appendChild(holder);
+  const name = childDisplayName(currentChild());
   try {
-    new QRCode(holder, qrCodeOptions(link, qrSize));
-    await new Promise(resolve => setTimeout(resolve, 80));
-    const qrNode = holder.querySelector('canvas') || holder.querySelector('img');
-    if (!qrNode) throw new Error('QR não gerado');
-    const qrX = (canvasSize - qrSize) / 2;
-    const qrY = 40;
-    ctx.drawImage(qrNode, qrX, qrY, qrSize, qrSize);
-
-    let logoSrc = '';
-    try { logoSrc = await getAppLogoDataUrl(); } catch (error) { logoSrc = ''; }
-    if (logoSrc) {
-      const logo = await loadImageElement(logoSrc);
-      const logoSize = Math.round(qrSize * 0.18);
-      const pad = 10;
-      const lx = qrX + (qrSize - logoSize) / 2;
-      const ly = qrY + (qrSize - logoSize) / 2;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(lx - pad, ly - pad, logoSize + pad * 2, logoSize + pad * 2);
-      ctx.drawImage(logo, lx, ly, logoSize, logoSize);
-    }
-
-    ctx.fillStyle = '#17213a';
-    ctx.font = '700 28px Inter, Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(name, canvasSize / 2, qrY + qrSize + 44, canvasSize - 48);
-
+    const canvas = await buildBrandedQrCanvas(link, name, 480);
     const anchor = document.createElement('a');
     anchor.href = canvas.toDataURL('image/png');
     anchor.download = `qr-${safeFileName(name)}.png`;
@@ -3779,8 +3810,6 @@ async function downloadQrImage() {
   } catch (error) {
     console.warn(error);
     showToast('Não foi possível baixar o QR Code.');
-  } finally {
-    holder.remove();
   }
 }
 
