@@ -1,11 +1,11 @@
-const CACHE_NAME = 'crescer-juntos-v58-cache';
+const CACHE_NAME = 'crescer-juntos-v59-cache';
 const CORE_ASSETS = [
   './',
   './index.html',
   './styles.css?v=55',
   './dnp-catalog.js?v=38',
   './dnp.js?v=49',
-  './app.js?v=42',
+  './app.js?v=43',
   './growth-reference.js?v=33',
   './growth-reference-ext.js?v=33',
   './manifest.json?v=32',
