@@ -6,10 +6,109 @@ const DNP_ACTIVITY_STATUS = {
 
 const dnpUi = {
   stageId: '',
-  dialog: '',
   openMilestoneId: '',
+  entries: {},
   bound: false
 };
+
+const DNP_ENTRY_TYPES = {
+  concern: {
+    key: 'concerns',
+    field: 'description',
+    label: 'Tenho uma preocupação',
+    pdfTitle: 'Preocupações do responsável',
+    placeholder: 'Escreva sua preocupação',
+    savedMessage: 'Preocupação salva neste aparelho. Converse com o médico sem esperar a próxima etapa.',
+    extra: () => ({ files: [] }),
+    meta: item => [item.topic && `Tema: ${item.topic}`, item.context && `Contexto: ${item.context}`]
+  },
+  loss: {
+    key: 'skillLosses',
+    field: 'note',
+    label: 'Percebi perda de uma habilidade',
+    pdfTitle: 'Perdas de habilidades relatadas',
+    placeholder: 'Descreva a habilidade que a criança deixou de fazer',
+    savedMessage: 'Possível perda registrada neste aparelho. Esse histórico é preservado.',
+    extra: () => ({ files: [] }),
+    meta: item => item.skill ? [`Habilidade: ${item.skill}`, `Fazia por volta de ${formatDate(item.whenCouldDo) || 'data não informada'}`, `Mudança percebida em ${formatDate(item.whenNoticed) || 'data não informada'}`] : []
+  },
+  achievement: {
+    key: 'extraAchievements',
+    field: 'note',
+    label: 'Registrar conquista avulsa',
+    pdfTitle: 'Conquistas e avanços',
+    placeholder: 'Descreva a conquista ou o avanço',
+    savedMessage: 'Conquista registrada neste aparelho.',
+    extra: () => ({ date: dnpToday() }),
+    meta: item => {
+      const milestone = item.milestoneId && DNP_CATALOG.milestones.find(entry => entry.id === item.milestoneId);
+      return [item.title && `Título: ${item.title}`, milestone && `Marco: ${milestone.text}`, item.date && `Data da conquista: ${formatDate(item.date)}`];
+    }
+  }
+};
+
+function dnpEntryUi(childId, type) {
+  dnpUi.entries[childId] ||= {};
+  dnpUi.entries[childId][type] ||= { open: false, draft: '', editingId: '', editDraft: '' };
+  return dnpUi.entries[childId][type];
+}
+
+function dnpEntryHasUnsaved(child, type) {
+  const ui = dnpEntryUi(child.id, type);
+  const config = DNP_ENTRY_TYPES[type];
+  const editing = ui.editingId && child.dnp[config.key].find(item => item.id === ui.editingId);
+  return ui.draft !== '' || Boolean(editing && ui.editDraft !== String(editing[config.field] || ''));
+}
+
+function dnpCommitEntries(child, key, mutate) {
+  const snapshot = child.dnp[key].map(item => ({ ...item }));
+  mutate(child.dnp[key]);
+  if (dnpSave()) return true;
+  child.dnp[key] = snapshot;
+  return false;
+}
+
+function dnpSaveEntry(type, editingId = '') {
+  const child = dnpChild();
+  const config = DNP_ENTRY_TYPES[type];
+  const ui = dnpEntryUi(child.id, type);
+  const text = String(editingId ? ui.editDraft : ui.draft).trim();
+  if (!text) {
+    showToast('Escreva o texto antes de salvar.');
+    return false;
+  }
+  const saved = dnpCommitEntries(child, config.key, list => {
+    if (editingId) {
+      const item = list.find(entry => entry.id === editingId);
+      if (item && String(item[config.field] || '') !== text) Object.assign(item, { [config.field]: text, updatedAt: dnpNow() });
+      return;
+    }
+    list.push({ id: uid(), childId: child.id, stageId: dnpUi.stageId, [config.field]: text, createdAt: dnpNow(), ...config.extra() });
+  });
+  if (!saved) return false;
+  if (editingId) Object.assign(ui, { editingId: '', editDraft: '' });
+  else ui.draft = '';
+  if (!dnpEntryHasUnsaved(child, type)) Object.assign(ui, { open: false, editingId: '', editDraft: '' });
+  showToast(config.savedMessage);
+  return true;
+}
+
+async function dnpDeleteEntry(type, id) {
+  const child = dnpChild();
+  const config = DNP_ENTRY_TYPES[type];
+  const item = child.dnp[config.key].find(entry => entry.id === id);
+  if (!item || !await confirmUserChoice('Deseja realmente excluir este registro?')) return false;
+  const deleted = dnpCommitEntries(child, config.key, list => {
+    const index = list.findIndex(entry => entry.id === id);
+    if (index >= 0) list.splice(index, 1);
+  });
+  if (!deleted) return false;
+  const ui = dnpEntryUi(child.id, type);
+  if (ui.editingId === id) Object.assign(ui, { editingId: '', editDraft: '' });
+  for (const ref of item.files || []) await deleteLocalFileRef(ref);
+  showToast('Registro excluído.');
+  return true;
+}
 
 function emptyDnpState() {
   return {
@@ -171,7 +270,7 @@ async function deleteDnpFiles(child) {
 }
 
 function dnpSave() {
-  saveState();
+  return saveState();
 }
 
 function dnpSetAnswer(milestoneId, patch) {
@@ -318,7 +417,7 @@ function dnpTimeline(child) {
       at: item.createdAt,
       type: 'loss',
       title: `Possível perda: ${item.skill || 'habilidade'}`,
-      detail: [`Fazia por volta de ${formatDate(item.whenCouldDo) || 'data não informada'}`, `Mudança percebida em ${formatDate(item.whenNoticed) || 'data não informada'}`, item.note].filter(Boolean).join(' — '),
+      detail: [...(item.skill ? [`Fazia por volta de ${formatDate(item.whenCouldDo) || 'data não informada'}`, `Mudança percebida em ${formatDate(item.whenNoticed) || 'data não informada'}`] : []), item.note].filter(Boolean).join(' — '),
       alert: true
     });
   });
@@ -409,9 +508,7 @@ function renderDnp(opts = {}) {
     </article>
 
     <div class="dnp-quick-actions">
-      <button type="button" class="primary" data-dnp-action="open-concern">Tenho uma preocupação</button>
-      <button type="button" class="secondary" data-dnp-action="open-loss">Percebi perda de uma habilidade</button>
-      <button type="button" class="secondary" data-dnp-action="open-achievement">Registrar conquista avulsa</button>
+      ${Object.keys(DNP_ENTRY_TYPES).map(type => renderDnpEntrySection(child, type)).join('')}
     </div>
 
     ${hasAlerts ? `
@@ -447,10 +544,6 @@ function renderDnp(opts = {}) {
         }).join('')}
       </div>
     </article>
-
-    ${dnpUi.dialog === 'concern' ? renderDnpConcernForm() : ''}
-    ${dnpUi.dialog === 'loss' ? renderDnpLossForm() : ''}
-    ${dnpUi.dialog === 'achievement' ? renderDnpAchievementForm(child, stage) : ''}
 
     <article class="card dnp-stage-card">
       <div class="dnp-stage-head">
@@ -604,72 +697,64 @@ function renderDnpTimeline(child) {
   `).join('');
 }
 
-function renderDnpConcernForm() {
+function dnpEntryDateText(item) {
+  return [item.createdAt && `Registrado em ${formatDnpDateTime(item.createdAt)}`, item.updatedAt && `editado em ${formatDnpDateTime(item.updatedAt)}`].filter(Boolean).join('; ');
+}
+
+function renderDnpEntrySection(child, type) {
+  const config = DNP_ENTRY_TYPES[type];
+  const ui = dnpEntryUi(child.id, type);
+  const items = child.dnp[config.key];
+  const panelId = `dnp-entry-panel-${type}`;
   return `
-    <article class="card dnp-dialog-card">
-      <h3>Tenho uma preocupação</h3>
-      <p class="muted">Pode ser registrada agora, mesmo sem iniciar ou concluir uma etapa. O registro permanece na linha do tempo.</p>
-      <form class="grid-form" data-dnp-form="concern">
-        <label class="wide">Tema<input name="topic" required placeholder="Sono, fala, brincadeira, alimentação..." /></label>
-        <label class="wide">Descrição<textarea name="description" rows="3" required></textarea></label>
-        <label class="wide">Contexto<textarea name="context" rows="2" placeholder="Quando começou, em que situação, com quem"></textarea></label>
-        <label class="wide">Foto ou vídeo opcional<input name="file" type="file" accept="image/*,video/*" /></label>
-        <div class="actions wide">
-          <button type="submit" class="primary">Salvar preocupação</button>
-          <button type="button" class="secondary" data-dnp-action="close-dialog">Cancelar</button>
+    <section class="dnp-entry-section ${ui.open ? 'is-open' : ''}">
+      <button type="button" class="secondary dnp-entry-toggle" data-dnp-action="toggle-entry" data-entry-type="${type}" aria-expanded="${ui.open}" aria-controls="${panelId}">
+        <span>${escapeHtml(config.label)}${items.length ? ` <small class="dnp-entry-count">(${items.length})</small>` : ''}</span>
+        <span class="dnp-entry-arrow" aria-hidden="true">${ui.open ? '▲' : '▼'}</span>
+      </button>
+      ${ui.open ? `
+        <div class="card dnp-entry-panel" id="${panelId}" role="region" aria-label="${escapeHtml(config.label)}">
+          ${items.length ? `<div class="list">${items.slice().reverse().map(item => renderDnpEntryItem(type, item, ui)).join('')}</div>` : ''}
+          <label class="dnp-entry-new">${escapeHtml(config.label)}
+            <textarea rows="4" data-dnp-entry-draft="${type}" placeholder="${escapeHtml(config.placeholder)}">${escapeHtml(ui.draft)}</textarea>
+          </label>
+          <div class="actions">
+            <button type="button" class="primary" data-dnp-action="save-entry" data-entry-type="${type}">Salvar</button>
+          </div>
         </div>
-      </form>
-    </article>
+      ` : ''}
+    </section>
   `;
 }
 
-function renderDnpLossForm() {
+function renderDnpEntryItem(type, item, ui) {
+  const config = DNP_ENTRY_TYPES[type];
+  const text = String(item[config.field] || '');
+  const editing = ui.editingId === item.id;
+  const stage = item.stageId && dnpStageById(item.stageId);
+  const when = [dnpEntryDateText(item), stage && `Etapa ${stage.label}`].filter(Boolean).join(' · ');
+  const ids = `data-entry-type="${type}" data-entry-id="${escapeHtml(item.id)}"`;
   return `
-    <article class="card dnp-dialog-card">
-      <h3>Percebi perda de uma habilidade</h3>
-      <p class="muted">Este registro é preservado mesmo se as respostas do checklist mudarem depois. Converse com o médico sem esperar a próxima etapa.</p>
-      <form class="grid-form" data-dnp-form="loss">
-        <label class="wide">Qual habilidade era?<input name="skill" required /></label>
-        <label>Quando a criança costumava fazê-la?<input name="whenCouldDo" type="date" /></label>
-        <label>Quando a mudança foi percebida?<input name="whenNoticed" type="date" /></label>
-        <label class="wide">Observação<textarea name="note" rows="3"></textarea></label>
-        <label class="wide">Foto ou vídeo opcional<input name="file" type="file" accept="image/*,video/*" /></label>
-        <div class="actions wide">
-          <button type="submit" class="primary">Salvar possível perda</button>
-          <button type="button" class="secondary" data-dnp-action="close-dialog">Cancelar</button>
-        </div>
-      </form>
-    </article>
-  `;
-}
-
-function renderDnpAchievementForm(child, stage) {
-  const options = DNP_CATALOG.milestones
-    .filter(item => {
-      const itemStage = dnpStageById(item.stageId);
-      return itemStage && itemStage.months <= stage.months;
-    })
-    .map(item => `<option value="${item.id}">${escapeHtml(dnpStageById(item.stageId).label)} — ${escapeHtml(item.text)}</option>`)
-    .join('');
-  return `
-    <article class="card dnp-dialog-card">
-      <h3>Registrar conquista entre etapas</h3>
-      <p class="muted">Você pode marcar um marco já disponível ou anotar uma conquista livre. Isso não antecipa os outros itens de uma etapa futura.</p>
-      <form class="grid-form" data-dnp-form="achievement">
-        <label class="wide">Marco já existente, se for o caso
-          <select name="milestoneId">
-            <option value="">Não é um marco da lista</option>
-            ${options}
-          </select>
+    <article class="item dnp-entry-item">
+      <small>${escapeHtml(when)}</small>
+      ${config.meta(item).filter(Boolean).map(line => `<p>${escapeHtml(line)}</p>`).join('')}
+      ${item.files?.length ? `<p>${item.files.length} anexo(s) preservado(s)</p>` : ''}
+      ${editing ? `
+        <label>Editar registro
+          <textarea rows="4" data-dnp-entry-edit="${type}">${escapeHtml(ui.editDraft)}</textarea>
         </label>
-        <label class="wide">Título da conquista<input name="title" placeholder="Ex.: começou a acenar tchau no mercado" /></label>
-        <label>Quando foi percebida<input name="date" type="date" value="${dnpToday()}" /></label>
-        <label class="wide">Observação<textarea name="note" rows="2"></textarea></label>
-        <div class="actions wide">
-          <button type="submit" class="primary">Salvar conquista</button>
-          <button type="button" class="secondary" data-dnp-action="close-dialog">Cancelar</button>
+        <div class="actions">
+          <button type="button" class="primary" data-dnp-action="save-entry" ${ids}>Salvar</button>
+          <button type="button" class="secondary" data-dnp-action="cancel-edit-entry" ${ids}>Cancelar</button>
+          <button type="button" class="danger" data-dnp-action="delete-entry" ${ids}>Excluir</button>
         </div>
-      </form>
+      ` : `
+        ${text ? `<p class="dnp-entry-text">${escapeHtml(text)}</p>` : ''}
+        <div class="actions">
+          <button type="button" class="secondary" data-dnp-action="edit-entry" ${ids}>Editar</button>
+          <button type="button" class="danger" data-dnp-action="delete-entry" ${ids}>Excluir</button>
+        </div>
+      `}
     </article>
   `;
 }
@@ -686,21 +771,64 @@ function initDnp() {
   if (!root || dnpUi.bound) return;
   dnpUi.bound = true;
 
-  root.addEventListener('click', event => {
+  root.addEventListener('click', async event => {
     const button = event.target.closest('[data-dnp-action]');
     if (!button) return;
     const action = button.dataset.dnpAction;
     if (action === 'select-stage') {
       dnpUi.stageId = button.dataset.stageId;
-      dnpUi.dialog = '';
       renderDnp();
     }
-    if (action === 'open-concern') { dnpUi.dialog = 'concern'; renderDnp(); }
-    if (action === 'open-loss') { dnpUi.dialog = 'loss'; renderDnp(); }
-    if (action === 'open-achievement') { dnpUi.dialog = 'achievement'; renderDnp(); }
-    if (action === 'close-dialog') { dnpUi.dialog = ''; renderDnp(); }
     if (action === 'go-cadastro') switchTab('cadastro');
     if (action === 'set-activity') dnpSetActivity(button.dataset.activityId, button.dataset.status);
+
+    const type = button.dataset.entryType;
+    if (!DNP_ENTRY_TYPES[type]) return;
+    const child = dnpChild();
+    const config = DNP_ENTRY_TYPES[type];
+    const ui = dnpEntryUi(child.id, type);
+    const id = button.dataset.entryId || '';
+    const editing = ui.editingId && child.dnp[config.key].find(item => item.id === ui.editingId);
+    const editChanged = Boolean(editing && ui.editDraft !== String(editing[config.field] || ''));
+    const focusToggle = () => root.querySelector(`[data-dnp-action="toggle-entry"][data-entry-type="${type}"]`)?.focus({ preventScroll: true });
+    if (action === 'toggle-entry') {
+      if (ui.open && dnpEntryHasUnsaved(child, type) && !await confirmUserChoice('Há texto não salvo nesta seção. Deseja fechar e descartar?')) return;
+      Object.assign(ui, ui.open ? { open: false, draft: '', editingId: '', editDraft: '' } : { open: true });
+      renderDnp({ keepScroll: true });
+      focusToggle();
+    }
+    if (action === 'save-entry' && dnpSaveEntry(type, id)) {
+      renderDnp({ keepScroll: true });
+      focusToggle();
+    }
+    if (action === 'edit-entry') {
+      if (editChanged && ui.editingId !== id && !await confirmUserChoice('Há uma edição não salva em outro registro. Deseja descartá-la?')) return;
+      const item = child.dnp[config.key].find(entry => entry.id === id);
+      if (!item) return;
+      Object.assign(ui, { editingId: id, editDraft: String(item[config.field] || '') });
+      renderDnp({ keepScroll: true });
+      root.querySelector(`[data-dnp-entry-edit="${type}"]`)?.focus({ preventScroll: true });
+    }
+    if (action === 'cancel-edit-entry') {
+      if (editChanged && !await confirmUserChoice('Deseja descartar as alterações deste registro?')) return;
+      Object.assign(ui, { editingId: '', editDraft: '' });
+      renderDnp({ keepScroll: true });
+    }
+    if (action === 'delete-entry' && await dnpDeleteEntry(type, id)) renderDnp({ keepScroll: true });
+  });
+
+  root.addEventListener('input', event => {
+    const field = event.target;
+    if (field.dataset.dnpEntryDraft) dnpEntryUi(dnpChild().id, field.dataset.dnpEntryDraft).draft = field.value;
+    if (field.dataset.dnpEntryEdit) dnpEntryUi(dnpChild().id, field.dataset.dnpEntryEdit).editDraft = field.value;
+  });
+
+  window.addEventListener('beforeunload', event => {
+    const pending = state.children.some(child => Object.keys(dnpUi.entries[child.id] || {}).some(type => dnpEntryHasUnsaved(child, type)));
+    if (pending) {
+      event.preventDefault();
+      event.returnValue = '';
+    }
   });
 
   root.addEventListener('change', event => {
@@ -745,73 +873,38 @@ function initDnp() {
       }
       showToast('Perguntas desta etapa salvas neste aparelho.');
       renderDnp({ keepScroll: true });
-      return;
-    }
-    if (form.dataset.dnpForm === 'concern') {
-      const item = {
-        id: uid(),
-        childId: child.id,
-        topic: String(data.topic || '').trim(),
-        description: String(data.description || '').trim(),
-        context: String(data.context || '').trim(),
-        createdAt: dnpNow(),
-        files: []
-      };
-      const file = form.elements.file?.files?.[0];
-      if (file) item.files.push(await storeLocalFile(file, '', { kind: 'dnp-concern', childId: child.id, parentId: item.id, name: file.name }));
-      child.dnp.concerns.push(item);
-      dnpUi.dialog = '';
-      dnpSave();
-      renderDnp();
-      showToast('Preocupação salva neste aparelho. Converse com o médico sem esperar a próxima etapa.');
-      return;
-    }
-    if (form.dataset.dnpForm === 'loss') {
-      const item = {
-        id: uid(),
-        childId: child.id,
-        skill: String(data.skill || '').trim(),
-        whenCouldDo: data.whenCouldDo || '',
-        whenNoticed: data.whenNoticed || '',
-        note: String(data.note || '').trim(),
-        createdAt: dnpNow(),
-        files: []
-      };
-      const file = form.elements.file?.files?.[0];
-      if (file) item.files.push(await storeLocalFile(file, '', { kind: 'dnp-loss', childId: child.id, parentId: item.id, name: file.name }));
-      child.dnp.skillLosses.push(item);
-      dnpUi.dialog = '';
-      dnpSave();
-      renderDnp();
-      showToast('Possível perda registrada neste aparelho. Esse histórico é preservado.');
-      return;
-    }
-    if (form.dataset.dnpForm === 'achievement') {
-      if (data.milestoneId) {
-        dnpSetAnswer(data.milestoneId, {
-          status: 'does',
-          note: String(data.note || '').trim(),
-          achievedWhen: data.date === dnpToday() ? 'today' : 'approx',
-          achievedDate: data.date || dnpToday()
-        });
-      }
-      if (String(data.title || '').trim() || String(data.note || '').trim()) {
-        child.dnp.extraAchievements.push({
-          id: uid(),
-          childId: child.id,
-          title: String(data.title || '').trim() || 'Conquista entre etapas',
-          note: String(data.note || '').trim(),
-          date: data.date || dnpToday(),
-          milestoneId: data.milestoneId || '',
-          createdAt: dnpNow()
-        });
-        dnpSave();
-      }
-      dnpUi.dialog = '';
-      renderDnp();
-      showToast('Conquista registrada neste aparelho.');
     }
   });
+}
+
+function dnpEntryForChild(item, child) {
+  return !item?.childId || item.childId === child.id;
+}
+
+function dnpEntryPdfText(item, config) {
+  const stage = item.stageId && dnpStageById(item.stageId);
+  return [
+    dnpEntryDateText(item),
+    stage && `Etapa: ${stage.label}`,
+    ...config.meta(item),
+    item[config.field]
+  ].filter(part => String(part || '').trim()).join('\n');
+}
+
+function addDnpMultiline(doc, text, y) {
+  doc.setTextColor(23, 33, 58);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  String(text).split(/\r\n|\r|\n/).forEach(paragraph => {
+    const wrapped = paragraph ? doc.splitTextToSize(paragraph, 170) : [''];
+    const lines = Array.isArray(wrapped) ? wrapped : [String(wrapped)];
+    lines.forEach(line => {
+      y = ensurePage(doc, y, 6);
+      if (line) doc.text(line, 20, y);
+      y += 5;
+    });
+  });
+  return y + 2;
 }
 
 function addDnpToChildPdf(doc, child, y) {
@@ -825,11 +918,16 @@ function addDnpToChildPdf(doc, child, y) {
   if (specialRecord) {
     y = addParagraph(doc, `Prematuridade ou necessidade especial (cadastro): ${specialRecord}`, y);
   }
-  child.dnp.concerns.forEach(item => {
-    y = addParagraph(doc, `Preocupação (${formatDnpDateTime(item.createdAt)}): ${item.topic}. ${item.description} ${item.context || ''}`, y);
-  });
-  child.dnp.skillLosses.forEach(item => {
-    y = addParagraph(doc, `Possível perda (${formatDnpDateTime(item.createdAt)}): ${item.skill}. Fazia em ${formatDate(item.whenCouldDo) || 'data não informada'}; mudança percebida em ${formatDate(item.whenNoticed) || 'data não informada'}. ${item.note || ''}`, y);
+  Object.values(DNP_ENTRY_TYPES).forEach(config => {
+    const blocks = child.dnp[config.key]
+      .filter(item => dnpEntryForChild(item, child))
+      .map(item => dnpEntryPdfText(item, config))
+      .filter(Boolean);
+    if (!blocks.length) return;
+    y = addSection(doc, config.pdfTitle, y, [98, 114, 138]);
+    blocks.forEach(block => {
+      y = addDnpMultiline(doc, block, y);
+    });
   });
   DNP_CATALOG.stages.forEach(stage => {
     const counts = dnpCountStage(child, stage.id);

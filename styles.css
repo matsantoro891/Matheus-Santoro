@@ -1589,10 +1589,31 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
 .dnp-activity-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .dnp-activity-card { border: 1px solid var(--line); border-radius: 18px; padding: 16px; background: #fff; }
 .dnp-activity-card p { color: var(--ink); }
-.dnp-dialog-card { border-color: var(--primary); }
+.dnp-entry-section { flex: 1 1 240px; display: grid; gap: 10px; align-content: start; }
+.dnp-entry-section.is-open { flex-basis: 100%; }
+.dnp-entry-toggle,
+.dnp-entry-toggle.primary,
+.dnp-entry-toggle.secondary,
+.dnp-entry-toggle.secondary.active,
+.dnp-entry-toggle:hover,
+.dnp-entry-toggle:active {
+  width: 100%;
+  justify-content: space-between;
+  text-align: left;
+  background: var(--soft);
+  color: var(--primary-dark);
+  box-shadow: none;
+}
+.dnp-entry-toggle:hover { box-shadow: inset 0 0 0 2px var(--line); }
+.dnp-entry-toggle:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+.dnp-entry-arrow { flex: none; }
+.dnp-entry-count { font-weight: 600; }
+.dnp-entry-panel { margin-bottom: 0; display: grid; gap: 12px; }
+.dnp-entry-panel .list { margin-top: 0; }
+.dnp-entry-item .dnp-entry-text { color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
 .dnp-timeline .item { align-items: flex-start; }
 @media (max-width: 720px) {
   .dnp-activity-grid, .dnp-status-stack { grid-template-columns: 1fr; align-items: stretch; }
   .dnp-child-top, .dnp-status-stack { align-items: stretch; }
-  .dnp-quick-actions .primary, .dnp-quick-actions .secondary { width: 100%; }
+  .dnp-entry-section { flex-basis: 100%; }
 }
