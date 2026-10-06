@@ -1580,11 +1580,48 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
 .dnp-stage-chip.kind-reference { background: var(--soft); }
 .dnp-stage-chip.kind-future { opacity: 0.78; }
 .dnp-area { margin-top: 22px; padding-top: 8px; border-top: 1px solid var(--line); }
-.dnp-milestone { padding: 14px 0; border-bottom: 1px solid #eef3fb; }
-.dnp-milestone-text { color: var(--ink); font-weight: 700; margin: 0 0 8px; }
-.dnp-status-options, .dnp-achieved { display: grid; gap: 8px; margin: 10px 0; }
-.dnp-radio { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.dnp-milestone { padding: 14px 0; border-bottom: 1px solid #eef3fb; min-width: 0; }
+.dnp-milestone-text { color: var(--ink); font-weight: 700; margin: 0 0 8px; overflow-wrap: anywhere; }
+.dnp-status-options, .dnp-achieved { display: grid; gap: 8px; margin: 10px 0; max-width: 760px; min-width: 0; }
+.dnp-radio {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-sizing: border-box;
+}
 .dnp-radio.selected { border-color: var(--primary); background: var(--soft); }
+.dnp-radio input[type="radio"] {
+  width: auto;
+  min-width: 1.15em;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  flex: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  accent-color: var(--primary);
+}
+.dnp-radio input[type="radio"]:focus {
+  box-shadow: none;
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.dnp-radio span {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
 .dnp-milestone.is-alert { background: #fff8f8; margin: 0 -12px; padding: 14px 12px; border-radius: 16px; }
 .dnp-activity-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .dnp-activity-card { border: 1px solid var(--line); border-radius: 18px; padding: 16px; background: #fff; }
