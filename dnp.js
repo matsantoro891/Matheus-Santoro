@@ -548,14 +548,6 @@ function renderDnp(opts = {}) {
       </div>
     </article>
 
-    <div class="dnp-try-entry">
-      <button type="button" class="secondary dnp-entry-toggle" data-dnp-action="open-try-list">
-        <span>Atividades "Quero experimentar"${tryActivities.length ? ` · ${tryActivities.length}` : ''}</span>
-        <span class="dnp-entry-arrow" aria-hidden="true">▼</span>
-      </button>
-      <p class="muted dnp-try-caption">As atividades marcadas como ‘Quero experimentar’ ficam reunidas ao final desta página para você acompanhar e marcar quando já estiverem fazendo.</p>
-    </div>
-
     ${hasAlerts ? `
       <article class="card dnp-alert-card">
         <h3>Converse com o médico sem esperar a próxima etapa</h3>
@@ -624,14 +616,14 @@ function renderDnp(opts = {}) {
       </div>
     </article>
 
+    ${renderDnpTryList(tryActivities)}
+
     <section class="dnp-family-records">
       <h3>Para registrar e conversar com o médico</h3>
       <div class="dnp-quick-actions">
         ${['concern', 'loss', 'achievement'].map(type => renderDnpEntrySection(child, type)).join('')}
       </div>
     </section>
-
-    ${renderDnpTryList(child, tryActivities)}
 
     <article class="card">
       <h3>Linha do tempo desta criança</h3>
@@ -662,7 +654,6 @@ function renderDnpArea(child, stage, area, kind) {
 
 function renderDnpMilestone(child, item, kind) {
   const answer = child.dnp.answers[item.id] || {};
-  const open = dnpUi.openMilestoneId === item.id || Boolean(answer.status);
   return `
     <article class="dnp-milestone ${answer.status === 'not_yet' ? 'is-alert' : ''}" data-milestone-id="${item.id}">
       <p class="dnp-milestone-text">${escapeHtml(item.text)}</p>
@@ -685,12 +676,6 @@ function renderDnpMilestone(child, item, kind) {
           ${answer.achievedWhen === 'approx' ? `<label>Data aproximada da conquista<input type="date" value="${escapeHtml(answer.achievedDate || '')}" data-dnp-action="set-achieved-date" data-milestone-id="${item.id}" /></label>` : ''}
         </div>
       ` : ''}
-      ${open ? `
-        <label class="wide">Observação opcional
-          <textarea rows="2" data-dnp-action="set-note" data-milestone-id="${item.id}" placeholder="Como foi, em que situação, o que chamou atenção">${escapeHtml(answer.note || '')}</textarea>
-        </label>
-      ` : ''}
-      ${answer.recordedAt ? `<p class="muted">Preenchido em ${escapeHtml(formatDnpDateTime(answer.recordedAt))}${answer.achievedDate ? `. Conquista aproximada: ${escapeHtml(formatDate(answer.achievedDate))}` : ''}.</p>` : ''}
     </article>
   `;
 }
@@ -749,29 +734,23 @@ function renderDnpActivityCard(child, activity) {
   `;
 }
 
-function renderDnpTryList(child, openItems) {
-  const doneItems = dnpTrackedActivities(child, 'doing');
-  const renderGroup = (title, items, done) => `
-    <h4>${title}</h4>
-    <div class="dnp-try-group">
-      ${items.length ? items.map(entry => renderDnpTryItem(entry, done)).join('') : `<p class="muted">${done ? 'Nenhuma atividade realizada ainda.' : 'Nenhuma atividade em aberto.'}</p>`}
-    </div>
-  `;
+function renderDnpTryList(openItems) {
   return `
     <article class="card dnp-try-list" id="dnp-try-list">
       <h3>Atividades "Quero experimentar"</h3>
-      ${renderGroup('Em aberto', openItems, false)}
-      ${renderGroup('Realizadas', doneItems, true)}
+      <div class="dnp-try-group">
+        ${openItems.length ? openItems.map(entry => renderDnpTryItem(entry)).join('') : '<p class="muted">Nenhuma atividade em aberto.</p>'}
+      </div>
     </article>
   `;
 }
 
-function renderDnpTryItem(entry, done) {
+function renderDnpTryItem(entry) {
   const { activity, stage } = entry;
   return `
     <article class="dnp-try-item">
       <label class="dnp-try-check">
-        <input type="checkbox" data-dnp-action="toggle-try-done" data-activity-id="${escapeHtml(activity.id)}" ${done ? 'checked' : ''} aria-label="${done ? 'Marcar como em aberto' : 'Marcar como realizada'}" />
+        <input type="checkbox" data-dnp-action="toggle-try-done" data-activity-id="${escapeHtml(activity.id)}" aria-label="Marcar como realizada" />
       </label>
       <div class="dnp-try-item-body">
         <h4>${escapeHtml(activity.title)}</h4>

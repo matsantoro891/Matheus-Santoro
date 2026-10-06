@@ -1574,7 +1574,7 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
 .dnp-try-entry { width: 100%; display: grid; gap: 6px; min-width: 0; margin: 0 0 18px; }
 .dnp-try-entry .dnp-entry-toggle { width: 100%; }
 .dnp-try-caption { margin: 0; font-size: 0.82rem; line-height: 1.45; max-width: 760px; overflow-wrap: anywhere; }
-.dnp-try-list { max-width: 760px; min-width: 0; }
+.dnp-try-list { min-width: 0; scroll-margin-top: 24px; }
 .dnp-try-group { display: grid; gap: 10px; margin: 10px 0 18px; }
 .dnp-try-item {
   display: grid;
