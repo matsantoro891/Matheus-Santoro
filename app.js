@@ -34,7 +34,7 @@ const GROWTH_FOOTERS = {
   },
   cdcBmi: {
     line1: 'Sociedade Brasileira de Pediatria',
-    line2: 'December 15, 2022\nData source: National Health Examination Survey and National Health and Nutrition Examination Survey.\nDeveloped by: National Center for Health Statistics in collaboration with National Center for Chronic Disease Prevention and Health Promotion, 2022.\nCS330334'
+    line2: ''
   }
 };
 
@@ -2001,7 +2001,7 @@ function referenceNameForResult(metric, sex, referenceKey, ageMonths) {
 
 function growthFooterText(referenceKey) {
   const footer = GROWTH_FOOTERS[referenceKey] || GROWTH_FOOTERS.who05;
-  return `${footer.line1}\n${footer.line2}`;
+  return footer.line2 ? `${footer.line1}\n${footer.line2}` : footer.line1;
 }
 
 function lmsValueAtZ(lms, z) {
@@ -2156,7 +2156,6 @@ function growthSummaryText(item, child = currentChild()) {
   const parts = [`${item.category}: ${displayValue}`, ageText];
   if (percentileText) parts.push(percentileText);
   if (fields.referenceName) parts.push(fields.referenceName);
-  if (fields.sexUsedForReference) parts.push(`Sexo usado: ${fields.sexUsedForReference}`);
   return parts.join(' — ');
 }
 
@@ -2398,7 +2397,7 @@ function buildGrowthChartView(chartType, child = currentChild()) {
   const gridX = xTicks.map(value => `<line x1="${xScale(value)}" y1="${top}" x2="${xScale(value)}" y2="${H-bottom}" class="chart-grid-line vertical"/><text x="${xScale(value)}" y="${H-bottom+24}" text-anchor="middle" class="axis-label">${growthChartXLabel(value, range)}</text>`).join('');
   const footerKey = range.footerKey || (chartType === 'bmi' ? 'cdcBmi' : 'who05');
   const footer = GROWTH_FOOTERS[footerKey];
-  const footerSvg = `<text x="${left}" y="${H-42}" class="growth-footer-title">${escapeHtml(footer.line1)}</text>${footer.line2.split('\n').map((line, index) => `<text x="${left}" y="${H-26 + index * 12}" class="growth-footer-text">${escapeHtml(line)}</text>`).join('')}`;
+  const footerSvg = `<text x="${left}" y="${H-42}" class="growth-footer-title">${escapeHtml(footer.line1)}</text>${(footer.line2 || '').split('\n').filter(Boolean).map((line, index) => `<text x="${left}" y="${H-26 + index * 12}" class="growth-footer-text">${escapeHtml(line)}</text>`).join('')}`;
   const svgInner = `${growthChartSvgStyle()}<text x="${left}" y="18" class="chart-main-title">${escapeHtml(title)}</text><text x="${left}" y="34" class="chart-subtitle">${escapeHtml(subtitle)}</text><rect x="${left}" y="${top}" width="${plotW}" height="${plotH}" rx="12" class="chart-bg"/>${gridY}${gridX}${curves}${points}<text x="${left}" y="${top-8}" class="axis-title">${yUnit}</text><text x="${W-right}" y="${H-bottom+8}" text-anchor="end" class="axis-title">Idade</text>${footerSvg}`;
   const html = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(title)}">${svgInner}</svg>`;
   const latest = sortedItems[sortedItems.length - 1];
@@ -2461,6 +2460,7 @@ window.editMilestone = function(id) {
   const form = $('milestoneForm');
   form.classList.remove('hidden');
   form.elements.milestoneId.value = item.id;
+  populateMilestoneCategories(item.category);
   if (DEFAULT_CATEGORIES.includes(item.category) && item.category !== 'Categoria personalizada') {
     form.elements.category.value = item.category;
     form.elements.customCategory.value = '';
@@ -2491,11 +2491,12 @@ window.deleteMilestone = async function(id) {
   showToast('Registro de evolução excluído.');
 };
 
-function populateMilestoneCategories() {
+function populateMilestoneCategories(keepCategory = '') {
   const select = $('milestoneCategorySelect');
-  const current = select.value;
-  select.innerHTML = DEFAULT_CATEGORIES.map(c => `<option>${escapeHtml(c)}</option>`).join('');
-  if (DEFAULT_CATEGORIES.includes(current)) select.value = current;
+  const current = keepCategory || select.value;
+  const options = DEFAULT_CATEGORIES.filter(c => c !== 'Desenvolvimento motor' || current === 'Desenvolvimento motor');
+  select.innerHTML = options.map(c => `<option>${escapeHtml(c)}</option>`).join('');
+  if (options.includes(current)) select.value = current;
   updateMilestoneFieldBehavior();
 }
 
@@ -3475,7 +3476,7 @@ function growthChartPdfSvg(chartType, child) {
        <text x="600" y="375" text-anchor="middle" fill="#62708a" font-size="28" font-weight="700" font-family="Inter,Arial,sans-serif">${escapeHtml(emptyMessage)}</text>`
     : `<rect x="40" y="115" width="1120" height="520" rx="24" fill="#fbfdff" stroke="#dce7f8"/>
        <svg x="70" y="140" width="1060" height="508" viewBox="0 0 ${view.width} ${view.height}">${view.svgInner}</svg>`;
-  const footerLines = (view.footerText || growthFooterText('who05')).split('\n').map((line, index) =>
+  const footerLines = (view.footerText || growthFooterText('who05')).split('\n').filter(Boolean).map((line, index) =>
     `<text x="40" y="${652 + index * 18}" fill="${index === 0 ? '#35445e' : '#62708a'}" font-size="${index === 0 ? 16 : 13}" font-weight="${index === 0 ? '800' : '500'}" font-family="Inter,Arial,sans-serif">${escapeHtml(line)}</text>`
   ).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720">
@@ -3622,7 +3623,7 @@ async function generateEvolutionPdf() {
   doc.setTextColor(23, 33, 58);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(17);
-  doc.text('Resumo da Evolução', 54, 56);
+  doc.text('Desenvolvimento Físico', 54, 56);
   doc.setTextColor(22, 110, 229);
   doc.setFontSize(22);
   doc.text(childDisplayName(child), 54, 69);
@@ -3640,7 +3641,7 @@ async function generateEvolutionPdf() {
 
   y = addSection(doc, 'REGISTROS DE EVOLUÇÃO', y, [34, 178, 125]);
   if (!child.milestones.length) {
-    y = addParagraph(doc, 'Nenhum registro em Marcos & Evolução cadastrado.', y);
+    y = addParagraph(doc, 'Nenhum registro em Desenvolvimento Físico cadastrado.', y);
   } else {
     const grouped = child.milestones.reduce((acc, item) => ((acc[item.category || 'Outros'] ||= []).push(item), acc), {});
     Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).forEach(([category, items]) => {
@@ -3656,7 +3657,7 @@ async function generateEvolutionPdf() {
     });
   }
 
-  addPdfFooter(doc, 'Resumo da Evolução');
+  addPdfFooter(doc, 'Desenvolvimento Físico');
   doc.save(`resumo-evolutivo-${safeFileName(childDisplayName(child))}.pdf`);
   showToast('Resumo Evolutivo criado.');
 }
