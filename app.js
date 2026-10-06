@@ -848,7 +848,7 @@ function renderMedications() {
   $('medList').innerHTML = child.medications.length ? child.medications.map(m => `
     <div class="item">
       <div class="item-top"><strong>${escapeHtml(m.nome)}</strong><button class="danger" onclick="removeItem('medications','${m.id}')">Excluir</button></div>
-      <p><b>Dose:</b> ${escapeHtml(m.dose || '-')} • <b>Frequência:</b> ${escapeHtml(m.frequencia || '-')} • <b>Horário:</b> ${escapeHtml(m.horario || '-')}</p>
+      <p><b>Dose:</b> ${escapeHtml(m.dose || '-')} • <b>Frequência:</b> ${escapeHtml(m.frequencia || '-')}</p>
       <p><b>Início:</b> ${formatDate(m.inicio)} • <b>Término:</b> ${formatDate(m.termino)}</p>
       ${m.observacoes ? `<p>${escapeHtml(m.observacoes)}</p>` : ''}
     </div>
