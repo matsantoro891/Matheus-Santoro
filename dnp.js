@@ -676,6 +676,11 @@ function renderDnpMilestone(child, item, kind) {
           ${answer.achievedWhen === 'approx' ? `<label>Data aproximada da conquista<input type="date" value="${escapeHtml(answer.achievedDate || '')}" data-dnp-action="set-achieved-date" data-milestone-id="${item.id}" /></label>` : ''}
         </div>
       ` : ''}
+      ${answer.status ? `
+        <label class="wide">Observação opcional
+          <textarea rows="2" data-dnp-action="set-note" data-milestone-id="${item.id}">${escapeHtml(answer.note || '')}</textarea>
+        </label>
+      ` : ''}
     </article>
   `;
 }
@@ -1065,7 +1070,7 @@ function addDnpToChildPdf(doc, child, y) {
     y = addParagraph(doc, `Respostas: ${counts.does} já faz; ${counts.starting} começando; ${counts.not_yet} ainda não faz; ${counts.unknown} sem oportunidade de observar. Sem percentual ou classificação.`, y);
     answered.forEach(item => {
       const answer = child.dnp.answers[item.id];
-      y = addParagraph(doc, `• ${item.text} — ${DNP_CATALOG.statuses[answer.status]?.label || answer.status}${answer.note ? `. ${answer.note}` : ''}`, y);
+      y = addParagraph(doc, `• ${item.text} — ${DNP_CATALOG.statuses[answer.status]?.label || answer.status}${String(answer.note || '').trim() ? `. Observação: ${answer.note.trim()}` : ''}`, y);
     });
     if (recurring) {
       const concernText = [recurring.concernHas || '-', recurring.concernDescription && String(recurring.concernDescription).trim()].filter(Boolean).join('. ');
