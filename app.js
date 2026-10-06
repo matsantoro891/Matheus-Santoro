@@ -831,8 +831,8 @@ function renderHome() {
   if (child.tipoSanguineo) badges.push(`Tipo sanguíneo: ${child.tipoSanguineo}`);
   if (child.alergias) badges.push('Alergias registradas');
   if (child.problemas) badges.push('Saúde registrada');
-  badges.push(`${child.milestones.length} registros`);
   $('homeBadges').innerHTML = badges.map(b => `<span class="badge">${escapeHtml(b)}</span>`).join('');
+  $('homeBadges').hidden = !badges.length;
   applyTheme();
 }
 
@@ -2901,6 +2901,7 @@ function addFormListeners() {
     await navigator.clipboard.writeText($('qrLink').value).catch(() => {});
     showToast('Link copiado.');
   });
+  $('downloadQrImageBtn')?.addEventListener('click', downloadQrImage);
 
   $('exportBackupBtn').addEventListener('click', exportBackup);
   $('importBackupInput').addEventListener('change', importBackup);
@@ -3448,12 +3449,63 @@ function addCleanLine(doc, label, value, y) {
   return addLine(doc, label, pdfCleanValue(value), y);
 }
 
-function addEvolutionChildData(doc, child, y) {
+function addPdfIdentityHeader(doc, child, logo, title) {
+  if (logo) addImageSafe(doc, logo, 14, 12, 18, 18);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(22, 110, 229);
+  doc.setFontSize(18);
+  doc.text('Crescer Juntos', 36, 20);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(23, 33, 58);
+  doc.setFontSize(9.5);
+  doc.text(`Gerado em ${new Date().toLocaleDateString('pt-BR')}`, 196, 20, { align: 'right' });
+  doc.setDrawColor(22, 110, 229);
+  doc.setLineWidth(0.7);
+  doc.line(14, 34, 196, 34);
+
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(222, 234, 248);
+  doc.roundedRect(14, 42, 182, 46, 6, 6, 'FD');
+  if (logo) addImageSafe(doc, logo, 18, 48, 28, 28);
+  doc.setTextColor(23, 33, 58);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(17);
+  doc.text(title, 54, 56);
+  doc.setTextColor(22, 110, 229);
+  doc.setFontSize(22);
+  doc.text(childDisplayName(child), 54, 69);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(98, 112, 138);
+  doc.setFontSize(9.5);
+  doc.text(`Gerado em ${new Date().toLocaleDateString('pt-BR')}`, 54, 80);
+  return 98;
+}
+
+function addPdfChildCoreData(doc, child, y) {
   y = addSection(doc, 'DADOS DA CRIANÇA', y, [22, 110, 229]);
   y = addCleanLine(doc, 'Nome', childDisplayName(child), y);
   y = addCleanLine(doc, 'Nascimento', child.nascimento ? formatDate(child.nascimento) : '', y);
   y = addCleanLine(doc, 'Idade', child.nascimento ? calculateAgeText(child.nascimento) : '', y);
   y = addCleanLine(doc, 'Sexo', child.sexo, y);
+  return y;
+}
+
+function addPdfPhotoAndMiniBio(doc, child, y) {
+  const bio = String(child.miniBio || '').trim();
+  const photo = typeof fileRefUrl === 'function' ? fileRefUrl(child.profilePhoto) : '';
+  if (!bio && !photo) return y;
+  y = addSection(doc, 'FOTO E MINI BIO', y, [134, 107, 255]);
+  if (photo) {
+    y = ensurePage(doc, y, 42);
+    addImageSafe(doc, photo, 20, y, 36, 36);
+    y += 40;
+  }
+  if (bio) y = addParagraph(doc, bio, y);
+  return y;
+}
+
+function addEvolutionChildData(doc, child, y) {
+  y = addPdfChildCoreData(doc, child, y);
   y = addCleanLine(doc, 'Tipo sanguíneo', child.tipoSanguineo, y);
   y = addCleanLine(doc, 'Mãe', pdfJoinValues([child.mae, child.telefoneMae], ' - '), y);
   y = addCleanLine(doc, 'Pai', pdfJoinValues([child.pai, child.telefonePai], ' - '), y);
@@ -3603,35 +3655,7 @@ async function generateEvolutionPdf() {
   let y = 18;
 
   const logo = await getAppLogoDataUrl();
-  if (logo) addImageSafe(doc, logo, 14, 12, 18, 18);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(22, 110, 229);
-  doc.setFontSize(18);
-  doc.text('Crescer Juntos', 36, 20);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(23, 33, 58);
-  doc.setFontSize(9.5);
-  doc.text(`Gerado em ${new Date().toLocaleDateString('pt-BR')}`, 196, 20, { align: 'right' });
-  doc.setDrawColor(22, 110, 229);
-  doc.setLineWidth(0.7);
-  doc.line(14, 34, 196, 34);
-
-  doc.setFillColor(255, 255, 255);
-  doc.setDrawColor(222, 234, 248);
-  doc.roundedRect(14, 42, 182, 46, 6, 6, 'FD');
-  if (logo) addImageSafe(doc, logo, 18, 48, 28, 28);
-  doc.setTextColor(23, 33, 58);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(17);
-  doc.text('Desenvolvimento Físico', 54, 56);
-  doc.setTextColor(22, 110, 229);
-  doc.setFontSize(22);
-  doc.text(childDisplayName(child), 54, 69);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(98, 112, 138);
-  doc.setFontSize(9.5);
-  doc.text(`Gerado em ${new Date().toLocaleDateString('pt-BR')}`, 54, 80);
-  y = 98;
+  y = addPdfIdentityHeader(doc, child, logo, 'Desenvolvimento Físico');
 
   y = addEvolutionChildData(doc, child, y);
   y = addSelectedEvolutionPdfContent(doc, child, sections, y);
@@ -3662,7 +3686,14 @@ async function generateEvolutionPdf() {
   showToast('Resumo Evolutivo criado.');
 }
 
+function qrCodeOptions(text, size) {
+  const options = { text, width: size, height: size };
+  if (window.QRCode?.CorrectLevel?.H != null) options.correctLevel = QRCode.CorrectLevel.H;
+  return options;
+}
+
 function generateQrCode() {
+  switchTab('inicio', { scroll: false });
   const child = currentChild();
   const compact = {
     nome: childDisplayName(child), nascimento: formatDate(child.nascimento), tipoSanguineo: child.tipoSanguineo,
@@ -3677,10 +3708,79 @@ function generateQrCode() {
   $('qrLink').value = link;
   $('qrCodeCanvas').innerHTML = '';
   if (window.QRCode) {
-    new QRCode($('qrCodeCanvas'), { text: link, width: 190, height: 190 });
+    new QRCode($('qrCodeCanvas'), qrCodeOptions(link, 190));
     showToast('QR Code criado.');
   } else {
     showToast('Biblioteca de QR Code ainda carregando.');
+  }
+  $('qrBox').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
+  });
+}
+
+async function downloadQrImage() {
+  const link = $('qrLink')?.value;
+  if (!link) return showToast('Gere o QR Code primeiro.');
+  if (!window.QRCode) return showToast('Biblioteca de QR Code ainda carregando.');
+  const child = currentChild();
+  const name = childDisplayName(child);
+  const canvasSize = 720;
+  const qrSize = 480;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvasSize;
+  canvas.height = canvasSize + 88;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:absolute;left:-9999px;top:-9999px';
+  document.body.appendChild(holder);
+  try {
+    new QRCode(holder, qrCodeOptions(link, qrSize));
+    await new Promise(resolve => setTimeout(resolve, 80));
+    const qrNode = holder.querySelector('canvas') || holder.querySelector('img');
+    if (!qrNode) throw new Error('QR não gerado');
+    const qrX = (canvasSize - qrSize) / 2;
+    const qrY = 40;
+    ctx.drawImage(qrNode, qrX, qrY, qrSize, qrSize);
+
+    let logoSrc = '';
+    try { logoSrc = await getAppLogoDataUrl(); } catch (error) { logoSrc = ''; }
+    if (logoSrc) {
+      const logo = await loadImageElement(logoSrc);
+      const logoSize = Math.round(qrSize * 0.18);
+      const pad = 10;
+      const lx = qrX + (qrSize - logoSize) / 2;
+      const ly = qrY + (qrSize - logoSize) / 2;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(lx - pad, ly - pad, logoSize + pad * 2, logoSize + pad * 2);
+      ctx.drawImage(logo, lx, ly, logoSize, logoSize);
+    }
+
+    ctx.fillStyle = '#17213a';
+    ctx.font = '700 28px Inter, Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(name, canvasSize / 2, qrY + qrSize + 44, canvasSize - 48);
+
+    const anchor = document.createElement('a');
+    anchor.href = canvas.toDataURL('image/png');
+    anchor.download = `qr-${safeFileName(name)}.png`;
+    anchor.click();
+    showToast('Imagem do QR Code baixada.');
+  } catch (error) {
+    console.warn(error);
+    showToast('Não foi possível baixar o QR Code.');
+  } finally {
+    holder.remove();
   }
 }
 

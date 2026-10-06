@@ -1269,63 +1269,33 @@ async function generateDnpDoctorPdf(child = dnpChild(), { download = true } = {}
   let logo = '';
   try {
     logo = typeof getAppLogoDataUrl === 'function' ? await getAppLogoDataUrl() : '';
-    if (logo && typeof addImageSafeForPdf === 'function') {
-      await addImageSafeForPdf(doc, logo, (pageW - logoSize) / 2, state.y, logoSize, logoSize);
-    } else if (logo && typeof addImageSafe === 'function') {
-      addImageSafe(doc, logo, (pageW - logoSize) / 2, state.y, logoSize, logoSize);
-    }
   } catch (error) {
     console.warn('Logo do resumo DNP não carregado.', error);
   }
-  state.y += 16.8;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12.36);
-  setInk(ink);
-  dnpPdfWrite(doc, 'cReScer juntos', pageW / 2, state.y, { align: 'center' });
-  state.y += 12;
-  doc.setFontSize(16);
-  dnpPdfWrite(doc, 'Desenvolvimento Neuropsicomotor', pageW / 2, state.y, { align: 'center' });
-  state.y += 8;
-
-  fill({ r: 246, g: 249, b: 253 });
-  stroke(line);
-  doc.setLineWidth(0.2);
-  doc.roundedRect(margin, state.y, contentW, 28, 3, 3, 'FD');
-  const infoY = state.y + 7;
-  const col2 = margin + contentW / 2 + 4;
-  const info = [
-    [margin + 6, 'Criança', summary.name],
-    [margin + 6, 'Idade atual', summary.age],
-    [margin + 6, 'Documento gerado em', summary.generatedAt],
-    [col2, 'Prematuridade / necessidade especial', summary.special],
-    [col2, 'Etapa de referência atual', summary.reference]
-  ];
-  info.slice(0, 3).forEach((row, index) => {
-    fill(accent);
-    doc.circle(row[0], infoY + index * 7 - 1, 1.05, 'F');
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    setInk(muted);
-    dnpPdfWrite(doc, row[1], row[0] + 4, infoY + index * 7 - 2.4);
+  if (typeof addPdfIdentityHeader === 'function') {
+    state.y = addPdfIdentityHeader(doc, child, logo, 'Desenvolvimento Neuropsicomotor');
+    state.y = addPdfChildCoreData(doc, child, state.y);
+    if (typeof addCleanLine === 'function') {
+      state.y = addCleanLine(doc, 'Prematuridade / necessidade especial', summary.special, state.y);
+      state.y = addCleanLine(doc, 'Etapa de referência atual', summary.reference, state.y);
+    }
+    if (typeof addPdfPhotoAndMiniBio === 'function') {
+      state.y = addPdfPhotoAndMiniBio(doc, child, state.y);
+    }
+  } else {
+    if (logo && typeof addImageSafe === 'function') {
+      addImageSafe(doc, logo, (pageW - logoSize) / 2, state.y, logoSize, logoSize);
+    }
+    state.y += 16.8;
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
+    doc.setFontSize(12.36);
     setInk(ink);
-    dnpPdfWrite(doc, row[2], row[0] + 4, infoY + index * 7 + 1.6);
-  });
-  info.slice(3).forEach((row, index) => {
-    fill(accent);
-    doc.circle(row[0], infoY + index * 10 - 1, 1.05, 'F');
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    setInk(muted);
-    dnpPdfWrite(doc, row[1], row[0] + 4, infoY + index * 10 - 2.4);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    setInk(ink);
-    const lines = dnpPdfLines(doc, row[2], contentW / 2 - 14);
-    lines.slice(0, 2).forEach((lineText, lineIndex) => dnpPdfWrite(doc, lineText, row[0] + 4, infoY + index * 10 + 1.6 + lineIndex * 3.6));
-  });
-  state.y += 34;
+    dnpPdfWrite(doc, 'cReScer juntos', pageW / 2, state.y, { align: 'center' });
+    state.y += 12;
+    doc.setFontSize(16);
+    dnpPdfWrite(doc, 'Desenvolvimento Neuropsicomotor', pageW / 2, state.y, { align: 'center' });
+    state.y += 8;
+  }
 
   sectionTitle('Etapas preenchidas e marcos');
   if (!summary.stages.length) {
