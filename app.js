@@ -76,9 +76,11 @@ function loadState() {
 function saveState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(prepareStateForLocalStorage(state)));
+    return true;
   } catch (error) {
     showToast('Não foi possível salvar. O navegador pode estar sem espaço para os dados.');
     console.error(error);
+    return false;
   }
 }
 
