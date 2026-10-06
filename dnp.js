@@ -7,6 +7,7 @@ const DNP_ACTIVITY_STATUS = {
 const dnpUi = {
   stageId: '',
   openMilestoneId: '',
+  openActivityNoteId: '',
   entries: {},
   bound: false
 };
@@ -20,7 +21,7 @@ const DNP_ENTRY_TYPES = {
     placeholder: 'Escreva sua preocupação',
     savedMessage: 'Preocupação salva neste aparelho. Converse com o médico sem esperar a próxima etapa.',
     extra: () => ({ files: [] }),
-    meta: item => [item.topic && `Tema: ${item.topic}`, item.context && `Contexto: ${item.context}`]
+    meta: () => []
   },
   loss: {
     key: 'skillLosses',
@@ -380,6 +381,33 @@ function dnpSetActivity(activityId, status) {
   renderDnp({ keepScroll: true });
 }
 
+function dnpSetActivityNote(activityId, note, { collapse = true } = {}) {
+  const child = dnpChild();
+  const current = child.dnp.activities[activityId];
+  if (!current) return false;
+  const previousNote = String(current.note || '');
+  const nextNote = String(note || '');
+  if (previousNote !== nextNote) {
+    current.note = nextNote;
+    current.updatedAt = dnpNow();
+    if (!dnpSave()) {
+      current.note = previousNote;
+      return false;
+    }
+  }
+  if (!collapse) return true;
+  dnpUi.openActivityNoteId = '';
+  renderDnp({ keepScroll: true });
+  return true;
+}
+
+function dnpActivityTipsText(stage) {
+  if ((stage.months || 0) >= 15) {
+    return 'Como primeiro professor do seu filho(a), você pode ajudar no seu aprendizado e no seu desenvolvimento cerebral. Experimente essas dicas e atividades simples de forma segura. Converse com o médico e professores do seu filho(a) se você tiver dúvidas ou para mais ideias sobre como ajudar o desenvolvimento do seu filho(a).';
+  }
+  return 'Como primeiro professor do seu bebê, você pode ajudar no seu aprendizado e no seu desenvolvimento cerebral. Experimente essas dicas e atividades simples de forma segura. Converse com o médico e professores do seu bebê se você tiver dúvidas ou para mais ideias sobre como ajudar o desenvolvimento do seu bebê.';
+}
+
 function dnpTimeline(child) {
   const items = [];
   Object.values(child.dnp.answers).forEach(answer => {
@@ -498,17 +526,11 @@ function renderDnp(opts = {}) {
           <p class="age-line">${escapeHtml(ageText)}</p>
           <p class="muted">Nascimento: ${escapeHtml(formatDate(child.nascimento) || 'ainda não informado')}</p>
         </div>
-        <div class="dnp-status-stack">
-          <span class="badge dnp-save-badge">Salvo neste aparelho</span>
-          <span class="badge">Não compartilhado</span>
-          <span class="badge">Não revisado pelo médico</span>
-        </div>
       </div>
-      <p class="dnp-disclaimer">Este espaço ajuda a família a acompanhar o desenvolvimento e a conversar com o profissional de saúde. Os marcos não substituem uma triagem padronizada e validada. O aplicativo não gera nota, percentual de normalidade, atraso ou diagnóstico.</p>
     </article>
 
     <div class="dnp-quick-actions">
-      ${Object.keys(DNP_ENTRY_TYPES).map(type => renderDnpEntrySection(child, type)).join('')}
+      ${['concern', 'loss'].map(type => renderDnpEntrySection(child, type)).join('')}
     </div>
 
     ${hasAlerts ? `
@@ -531,8 +553,8 @@ function renderDnp(opts = {}) {
       <h3>Etapa de referência</h3>
       ${reference.reason === 'missing-birth' ? '<p>Informe a data de nascimento no cadastro para o aplicativo indicar a etapa da idade cronológica.</p>' : ''}
       ${reference.reason === 'before-first' ? '<p>Pela idade cronológica, a primeira etapa da cartilha (2 meses) ainda é futura. Você pode olhar as etapas, mas os itens não viram pendência.</p>' : ''}
-      ${reference.stage ? `<p>Pela idade cronológica, a etapa de referência é <strong>${escapeHtml(reference.stage.label)}</strong>. Entre duas idades da cartilha, usamos a etapa anterior já alcançada. A próxima aparece como futura e não vira lista de pendências.</p>` : ''}
-      <p class="muted">Não há cálculo de idade corrigida neste aplicativo. Se a criança nasceu prematura, converse com o médico sobre qual idade usar na consulta. A família não escolhe qual idade orienta a etapa de referência.</p>
+      ${reference.stage ? `<p>Pela idade cronológica, a etapa de referência é <strong>${escapeHtml(reference.stage.label)}</strong>.</p>` : ''}
+      <p class="muted">Se a criança nasceu prematura, converse com o médico sobre qual idade usar na consulta.</p>
       <div class="dnp-stage-grid" role="list">
         ${DNP_CATALOG.stages.map(item => {
           const itemKind = dnpStageKind(item, reference);
@@ -564,7 +586,7 @@ function renderDnp(opts = {}) {
 
     <article class="card">
       <h3>Ajude seu ${stage.childWord === 'bebê' ? 'bebê' : 'filho'} a aprender e crescer</h3>
-      <p class="muted">Brincadeiras, rotina, alimentação, sono, telas, segurança e comportamento desta etapa. Marcar uma atividade não marca um marco como alcançado.</p>
+      <p class="muted">${escapeHtml(dnpActivityTipsText(stage))}</p>
       <div class="dnp-activity-grid">
         ${dnpActivitiesByStage(stage.id).map(activity => renderDnpActivityCard(child, activity)).join('')}
       </div>
@@ -627,23 +649,22 @@ function renderDnpMilestone(child, item, kind) {
           <textarea rows="2" data-dnp-action="set-note" data-milestone-id="${item.id}" placeholder="Como foi, em que situação, o que chamou atenção">${escapeHtml(answer.note || '')}</textarea>
         </label>
       ` : ''}
-      ${answer.recordedAt ? `<p class="muted">Preenchido neste aparelho em ${escapeHtml(formatDnpDateTime(answer.recordedAt))}${answer.achievedDate ? `. Conquista aproximada: ${escapeHtml(formatDate(answer.achievedDate))}` : ''}.</p>` : ''}
+      ${answer.recordedAt ? `<p class="muted">Preenchido em ${escapeHtml(formatDnpDateTime(answer.recordedAt))}${answer.achievedDate ? `. Conquista aproximada: ${escapeHtml(formatDate(answer.achievedDate))}` : ''}.</p>` : ''}
     </article>
   `;
 }
 
 function renderDnpRecurringForm(child, stage) {
   const entry = child.dnp.recurring[stage.id] || {};
-  const specialRecord = String(child.registroEspecial || '').trim();
   return `
     <form class="grid-form" data-dnp-form="recurring" data-stage-id="${stage.id}">
       <label class="wide">O que a família e a criança costumam fazer juntas?
         <textarea name="together" rows="2">${escapeHtml(entry.together || '')}</textarea>
       </label>
-      <label class="wide">Do que a criança gosta?
+      <label class="wide">Quais são as coisas que a criança gosta de fazer?
         <textarea name="likes" rows="2">${escapeHtml(entry.likes || '')}</textarea>
       </label>
-      <label>Existe algo que preocupa a família?
+      <label class="wide">Há alguma coisa que a criança faz ou deixa de fazer que o preocupa?
         <select name="concernHas">
           <option value="" ${!entry.concernHas ? 'selected' : ''}></option>
           <option value="no" ${entry.concernHas === 'no' ? 'selected' : ''}>Não</option>
@@ -651,17 +672,10 @@ function renderDnpRecurringForm(child, stage) {
           <option value="doubt" ${entry.concernHas === 'doubt' ? 'selected' : ''}>Há dúvida</option>
         </select>
       </label>
-      <label>Tema da preocupação<input name="concernTopic" value="${escapeHtml(entry.concernTopic || '')}" /></label>
       <label class="wide">Descrição da preocupação<textarea name="concernDescription" rows="2">${escapeHtml(entry.concernDescription || '')}</textarea></label>
-      <label class="wide">Contexto<textarea name="concernContext" rows="2" placeholder="Onde, quando, com quem">${escapeHtml(entry.concernContext || '')}</textarea></label>
       <label class="wide">A criança deixou de fazer algo que fazia?
         <textarea name="lostSkill" rows="2">${escapeHtml(entry.lostSkill || '')}</textarea>
       </label>
-      <div class="wide dnp-health-reuse">
-        <p><strong>Há necessidade especial de saúde ou prematuridade?</strong></p>
-        <p class="muted">${specialRecord || child.problemas ? `${escapeHtml([child.problemas, specialRecord].filter(Boolean).join(' '))} Se quiser complementar só esta etapa, use o campo abaixo.` : 'Essa informação ainda não está no cadastro da criança.'}</p>
-        <textarea name="specialHealthNote" rows="2" placeholder="Complemento só desta conversa, se necessário">${escapeHtml(entry.specialHealthNote || '')}</textarea>
-      </div>
       <div class="actions wide">
         <button type="submit" class="primary">Salvar perguntas desta etapa</button>
       </div>
@@ -671,6 +685,8 @@ function renderDnpRecurringForm(child, stage) {
 
 function renderDnpActivityCard(child, activity) {
   const current = child.dnp.activities[activity.id] || {};
+  const noteOpen = current.status === 'question' && dnpUi.openActivityNoteId === activity.id;
+  const note = String(current.note || '');
   return `
     <article class="dnp-activity-card">
       <h4>${escapeHtml(activity.title)}</h4>
@@ -681,6 +697,13 @@ function renderDnpActivityCard(child, activity) {
           <button type="button" class="${current.status === status.id ? 'primary' : 'secondary'}" data-dnp-action="set-activity" data-activity-id="${activity.id}" data-status="${status.id}">${escapeHtml(status.label)}</button>
         `).join('')}
       </div>
+      ${noteOpen ? `
+        <label class="dnp-activity-note">Sua dúvida
+          <textarea rows="2" data-dnp-action="set-activity-note" data-activity-id="${activity.id}" placeholder="Descreva brevemente sua dúvida…">${escapeHtml(note)}</textarea>
+        </label>
+      ` : current.status === 'question' && note.trim() ? `
+        <button type="button" class="dnp-activity-note-preview" data-dnp-action="open-activity-note" data-activity-id="${activity.id}">${escapeHtml(note)}</button>
+      ` : ''}
     </article>
   `;
 }
@@ -780,7 +803,22 @@ function initDnp() {
       renderDnp();
     }
     if (action === 'go-cadastro') switchTab('cadastro');
-    if (action === 'set-activity') dnpSetActivity(button.dataset.activityId, button.dataset.status);
+    if (action === 'open-activity-note') {
+      dnpUi.openActivityNoteId = button.dataset.activityId;
+      renderDnp({ keepScroll: true });
+    }
+    if (action === 'set-activity') {
+      const activityId = button.dataset.activityId;
+      const status = button.dataset.status;
+      const current = dnpChild().dnp.activities[activityId] || {};
+      if (status === 'question' && current.status === 'question') {
+        dnpUi.openActivityNoteId = dnpUi.openActivityNoteId === activityId ? '' : activityId;
+        renderDnp({ keepScroll: true });
+      } else {
+        dnpUi.openActivityNoteId = status === 'question' ? activityId : (dnpUi.openActivityNoteId === activityId ? '' : dnpUi.openActivityNoteId);
+        dnpSetActivity(activityId, status);
+      }
+    }
 
     const type = button.dataset.entryType;
     if (!DNP_ENTRY_TYPES[type]) return;
@@ -844,6 +882,16 @@ function initDnp() {
     if (field.dataset.dnpAction === 'set-note') {
       dnpSetAnswer(field.dataset.milestoneId, { note: field.value, status: dnpChild().dnp.answers[field.dataset.milestoneId]?.status || '' });
     }
+    if (field.dataset.dnpAction === 'set-activity-note') {
+      const activityId = field.dataset.activityId;
+      if (!dnpSetActivityNote(activityId, field.value, { collapse: false })) return;
+      setTimeout(() => {
+        if (dnpUi.openActivityNoteId !== activityId) return;
+        if (document.activeElement?.dataset?.dnpAction === 'set-activity-note') return;
+        dnpUi.openActivityNoteId = '';
+        renderDnp({ keepScroll: true });
+      }, 0);
+    }
   });
 
   root.addEventListener('submit', async event => {
@@ -860,12 +908,12 @@ function initDnp() {
         const payload = {
           childId: child.id,
           stageId,
-          topic: data.concernTopic || 'Preocupação da etapa',
+          topic: latest?.topic || 'Preocupação da etapa',
           description: data.concernDescription || '',
-          context: data.concernContext || `Etapa ${dnpStageById(stageId)?.label || ''}`,
+          context: latest?.context || `Etapa ${dnpStageById(stageId)?.label || ''}`,
           fromRecurring: true
         };
-        const unchanged = latest && ['topic', 'description', 'context'].every(key => latest[key] === payload[key]);
+        const unchanged = latest && latest.description === payload.description;
         if (!unchanged) {
           child.dnp.concerns.push({ id: uid(), createdAt: dnpNow(), files: [], ...payload });
           dnpSave();
@@ -933,7 +981,11 @@ function addDnpToChildPdf(doc, child, y) {
     const counts = dnpCountStage(child, stage.id);
     const recurring = child.dnp.recurring[stage.id];
     const answered = dnpMilestonesByStage(stage.id).filter(item => child.dnp.answers[item.id]?.status);
-    if (!counts.answered && !recurring) return;
+    const activityDoubts = dnpActivitiesByStage(stage.id).filter(activity => {
+      const current = child.dnp.activities[activity.id];
+      return current?.status === 'question' && String(current.note || '').trim();
+    });
+    if (!counts.answered && !recurring && !activityDoubts.length) return;
     y = addSection(doc, `Etapa ${stage.label}`, y, [98, 114, 138]);
     y = addParagraph(doc, `Respostas: ${counts.does} já faz; ${counts.starting} começando; ${counts.not_yet} ainda não faz; ${counts.unknown} sem oportunidade de observar. Sem percentual ou classificação.`, y);
     answered.forEach(item => {
@@ -941,8 +993,12 @@ function addDnpToChildPdf(doc, child, y) {
       y = addParagraph(doc, `• ${item.text} — ${DNP_CATALOG.statuses[answer.status]?.label || answer.status}${answer.note ? `. ${answer.note}` : ''}`, y);
     });
     if (recurring) {
-      y = addParagraph(doc, `Fazem juntos: ${recurring.together || '-'}. Gosta de: ${recurring.likes || '-'}. Preocupação: ${recurring.concernHas || '-'}. Deixou de fazer: ${recurring.lostSkill || '-'}.`, y);
+      const concernText = [recurring.concernHas || '-', recurring.concernDescription && String(recurring.concernDescription).trim()].filter(Boolean).join('. ');
+      y = addParagraph(doc, `Fazem juntos: ${recurring.together || '-'}. Gosta de: ${recurring.likes || '-'}. Preocupação: ${concernText}. Deixou de fazer: ${recurring.lostSkill || '-'}.`, y);
     }
+    activityDoubts.forEach(activity => {
+      y = addDnpMultiline(doc, `${activity.title}\nTenho uma dúvida: ${child.dnp.activities[activity.id].note}`, y);
+    });
   });
   return y;
 }
