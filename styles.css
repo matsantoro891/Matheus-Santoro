@@ -1563,6 +1563,22 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
 }
 
 .dnp-child-top, .dnp-stage-head, .dnp-status-stack { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.dnp-pdf-btn {
+  flex: none;
+  width: auto;
+  max-width: 100%;
+  white-space: nowrap;
+}
+.dnp-pdf-missing-msg,
+.card p.dnp-pdf-missing-msg {
+  color: #d64545;
+  font-weight: 700;
+  margin: 10px 0 0;
+  width: 100%;
+}
+.dnp-missing {
+  box-shadow: 0 0 0 2px #d64545;
+}
 .dnp-status-stack { flex-direction: column; align-items: flex-end; }
 .dnp-save-badge { background: #e8f8ef; color: #1e7a46; }
 .dnp-disclaimer, .dnp-example { font-size: 0.92rem; }
@@ -1742,5 +1758,6 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
 @media (max-width: 720px) {
   .dnp-activity-grid, .dnp-status-stack { grid-template-columns: 1fr; align-items: stretch; }
   .dnp-child-top, .dnp-status-stack { align-items: stretch; }
+  .dnp-pdf-btn { width: 100%; white-space: normal; }
   .dnp-entry-section { flex-basis: 100%; }
 }

@@ -9,6 +9,7 @@ const dnpUi = {
   stagePickerOpen: false,
   openMilestoneId: '',
   openActivityNoteId: '',
+  pdfMissing: null,
   entries: {},
   bound: false
 };
@@ -535,6 +536,8 @@ function renderDnp(opts = {}) {
   const hasAlerts = child.dnp.concerns.length || child.dnp.skillLosses.length || counts.not_yet > 0;
   const specialRecord = String(child.registroEspecial || '').trim();
   const tryActivities = dnpTrackedActivities(child, 'try');
+  if (dnpUi.pdfMissing) dnpUi.pdfMissing = dnpIncompleteForPdf(child, stage);
+  const pdfMissing = dnpUi.pdfMissing || {};
 
   root.innerHTML = `
     <article class="card dnp-child-card">
@@ -545,7 +548,9 @@ function renderDnp(opts = {}) {
           <p class="age-line">${escapeHtml(ageText)}</p>
           <p class="muted">Nascimento: ${escapeHtml(formatDate(child.nascimento) || 'ainda não informado')}</p>
         </div>
+        <button type="button" class="secondary dnp-pdf-btn" data-dnp-action="generate-doctor-pdf">Gerar resumo para o médico</button>
       </div>
+      ${pdfMissing.any ? '<p class="dnp-pdf-missing-msg" role="status">Faltam campos para serem preenchidos</p>' : ''}
     </article>
 
     ${hasAlerts ? `
@@ -591,7 +596,7 @@ function renderDnp(opts = {}) {
       </div>
     </article>
 
-    <article class="card dnp-stage-card">
+    <article class="card dnp-stage-card ${pdfMissing.milestones ? 'dnp-missing' : ''}">
       <div class="dnp-stage-head">
         <div>
           <h3>Marcos aos ${escapeHtml(stage.label)}</h3>
@@ -602,13 +607,13 @@ function renderDnp(opts = {}) {
       ${DNP_CATALOG.areas.map(area => renderDnpArea(child, stage, area, kind)).join('')}
     </article>
 
-    <article class="card">
+    <article class="card dnp-recurring-card ${pdfMissing.recurring ? 'dnp-missing' : ''}">
       <h3>Perguntas para conversar com o médico</h3>
       <p class="muted">Ficam gravadas nesta etapa e na linha do tempo da criança ativa.</p>
       ${renderDnpRecurringForm(child, stage)}
     </article>
 
-    <article class="card">
+    <article class="card dnp-activities-card ${pdfMissing.activities ? 'dnp-missing' : ''}">
       <h3>Ajude seu ${stage.childWord === 'bebê' ? 'bebê' : 'filho'} a aprender e crescer</h3>
       <p class="muted">${escapeHtml(dnpActivityTipsText(stage))}</p>
       <div class="dnp-activity-grid">
@@ -655,7 +660,7 @@ function renderDnpArea(child, stage, area, kind) {
 function renderDnpMilestone(child, item, kind) {
   const answer = child.dnp.answers[item.id] || {};
   return `
-    <article class="dnp-milestone ${answer.status === 'not_yet' ? 'is-alert' : ''}" data-milestone-id="${item.id}">
+    <article class="dnp-milestone ${answer.status === 'not_yet' ? 'is-alert' : ''} ${dnpUi.pdfMissing?.milestoneIds?.includes(item.id) ? 'dnp-missing' : ''}" data-milestone-id="${item.id}">
       <p class="dnp-milestone-text">${escapeHtml(item.text)}</p>
       ${item.example ? `<p class="muted dnp-example">${escapeHtml(item.example)}</p>` : ''}
       ${kind === 'future' ? '<p class="muted">Etapa futura: leitura livre, sem pendência automática.</p>' : ''}
@@ -719,7 +724,7 @@ function renderDnpActivityCard(child, activity) {
   const noteOpen = current.status === 'question' && dnpUi.openActivityNoteId === activity.id;
   const note = String(current.note || '');
   return `
-    <article class="dnp-activity-card">
+    <article class="dnp-activity-card ${dnpUi.pdfMissing?.activityIds?.includes(activity.id) ? 'dnp-missing' : ''}">
       <h4>${escapeHtml(activity.title)}</h4>
       <p>${escapeHtml(activity.text)}</p>
       ${activity.flags.length ? '<p class="muted">Orientação da cartilha, pendente de revisão médica antes de ser tratada como regra definitiva no app.</p>' : ''}
@@ -876,6 +881,12 @@ function initDnp() {
       document.querySelector('.dnp-stage-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     if (action === 'go-cadastro') switchTab('cadastro');
+    if (action === 'generate-doctor-pdf') {
+      dnpUi.pdfMissing = dnpIncompleteForPdf(dnpChild(), dnpSelectedStage(dnpChild()));
+      renderDnp({ keepScroll: true });
+      document.querySelector('.dnp-pdf-missing-msg, .dnp-missing')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      await generateDnpDoctorPdf();
+    }
     if (action === 'open-activity-note') {
       dnpUi.openActivityNoteId = button.dataset.activityId;
       renderDnp({ keepScroll: true });
@@ -1083,6 +1094,424 @@ function addDnpToChildPdf(doc, child, y) {
   return y;
 }
 
+function dnpIncompleteForPdf(child, stage) {
+  const milestoneIds = dnpMilestonesByStage(stage.id).filter(item => !child.dnp.answers[item.id]?.status).map(item => item.id);
+  const activityIds = dnpActivitiesByStage(stage.id).filter(item => !child.dnp.activities[item.id]?.status).map(item => item.id);
+  const recurring = child.dnp.recurring[stage.id] || {};
+  const recurringEmpty = !String(recurring.together || '').trim() || !String(recurring.likes || '').trim() || !String(recurring.concernHas || '').trim()
+    || ((recurring.concernHas === 'yes' || recurring.concernHas === 'doubt') && !String(recurring.concernDescription || '').trim());
+  return {
+    any: Boolean(milestoneIds.length || activityIds.length || recurringEmpty),
+    milestones: milestoneIds.length > 0,
+    activities: activityIds.length > 0,
+    recurring: recurringEmpty,
+    milestoneIds,
+    activityIds
+  };
+}
+
+function dnpPdfAccent(child) {
+  const gender = typeof themeGenderFromChild === 'function' ? themeGenderFromChild(child) : '';
+  if (gender === 'feminino') return { r: 163, g: 61, b: 107 };
+  if (gender === 'masculino') return { r: 47, g: 110, b: 208 };
+  return { r: 47, g: 110, b: 208 };
+}
+
+function dnpPdfStatusColor(positive, accent) {
+  return positive ? accent : { r: 23, g: 33, b: 58 };
+}
+
+function dnpRecurringAnswer(entry, key) {
+  if (!entry) return '';
+  if (key === 'concern') {
+    const labels = { yes: 'Sim', no: 'Não', doubt: 'Há dúvida' };
+    return [labels[entry.concernHas] || '', String(entry.concernDescription || '').trim()].filter(Boolean).join('. ');
+  }
+  return String(entry[key] || '').trim();
+}
+
+function dnpDoctorSummary(child) {
+  normalizeDnpState(child);
+  const reference = dnpReferenceStage(child.nascimento);
+  const filledStages = DNP_CATALOG.stages.filter(stage => dnpMilestonesByStage(stage.id).some(item => child.dnp.answers[item.id]?.status)).map(stage => ({
+    id: stage.id,
+    label: stage.label,
+    months: stage.months,
+    items: dnpMilestonesByStage(stage.id).filter(item => child.dnp.answers[item.id]?.status).map(item => {
+      const answer = child.dnp.answers[item.id];
+      return {
+        text: item.text.replace(/\.$/, ''),
+        status: DNP_CATALOG.statuses[answer.status]?.label || answer.status,
+        note: String(answer.note || '').trim(),
+        positive: answer.status === 'does'
+      };
+    })
+  }));
+  const questionDefs = [
+    { key: 'together', label: 'O que a família e a criança costumam fazer juntas?' },
+    { key: 'likes', label: 'Quais são as coisas que a criança gosta de fazer?' },
+    { key: 'concern', label: 'Há alguma coisa que a criança faz ou deixa de fazer que o preocupa?' },
+    { key: 'lostSkill', label: 'A criança deixou de fazer algo que fazia?' }
+  ];
+  const questions = questionDefs.map(def => {
+    let answer = '';
+    filledStages.slice().reverse().forEach(stage => {
+      const value = dnpRecurringAnswer(child.dnp.recurring[stage.id], def.key);
+      if (value && !answer) answer = value;
+    });
+    if (!answer) answer = dnpRecurringAnswer(child.dnp.recurring[reference.stage?.id], def.key);
+    return { question: def.label, answer: answer || 'Sem registro' };
+  });
+  const activityStages = DNP_CATALOG.stages.filter(stage => dnpActivitiesByStage(stage.id).some(item => child.dnp.activities[item.id]?.status));
+  const latestAct = activityStages[activityStages.length - 1] || reference.stage || filledStages[filledStages.length - 1] || DNP_CATALOG.stages[0];
+  const activities = [];
+  DNP_CATALOG.stages.forEach(stage => {
+    dnpActivitiesByStage(stage.id).forEach(activity => {
+      const current = child.dnp.activities[activity.id];
+      if (!current?.status) return;
+      activities.push({
+        title: activity.title,
+        status: DNP_ACTIVITY_STATUS[current.status]?.label || current.status,
+        doubt: current.status === 'question' ? String(current.note || '').trim() : '',
+        positive: current.status === 'doing'
+      });
+    });
+  });
+  const family = [
+    { label: 'Tenho uma preocupação', texts: child.dnp.concerns.map(item => String(item.description || '').trim()).filter(Boolean) },
+    { label: 'Percebi perda de uma habilidade', texts: child.dnp.skillLosses.map(item => String(item.note || item.skill || '').trim()).filter(Boolean) },
+    { label: 'Conquista avulsa', texts: child.dnp.extraAchievements.map(item => String(item.note || item.title || '').trim()).filter(Boolean) }
+  ];
+  return {
+    name: typeof childDisplayName === 'function' ? childDisplayName(child) : `${child.nome || ''} ${child.sobrenome || ''}`.trim() || 'Criança sem nome',
+    age: child.nascimento && typeof calculateAgeText === 'function' ? calculateAgeText(child.nascimento) : 'Sem registro',
+    generatedAt: new Date().toLocaleDateString('pt-BR'),
+    special: String(child.registroEspecial || '').trim() || 'Sem registro',
+    reference: reference.stage ? reference.stage.label : 'Sem registro',
+    accent: dnpPdfAccent(child),
+    filledStages,
+    questions,
+    activityTitle: (reference.stage?.months || 0) >= 15 ? 'Ajude seu filho(a) a aprender e crescer' : 'Ajude seu bebê a aprender e crescer',
+    activities,
+    family
+  };
+}
+
+function dnpPdfWrite(doc, text, x, y, options) {
+  const value = String(text || '');
+  if (!value) return;
+  try { doc.text(value, x, y, options); } catch (error) { /* jsPDF pode falhar em alguns runtimes */ }
+}
+
+function dnpPdfLines(doc, text, width) {
+  try {
+    const lines = doc.splitTextToSize(String(text || ''), width);
+    return Array.isArray(lines) ? lines : [String(lines)];
+  } catch (error) {
+    return [String(text || '')];
+  }
+}
+
+async function generateDnpDoctorPdf(child = dnpChild(), { download = true } = {}) {
+  const doc = typeof getPdf === 'function' ? getPdf() : null;
+  if (!doc) return null;
+  const summary = dnpDoctorSummary(child);
+  const accent = summary.accent;
+  const ink = { r: 23, g: 33, b: 58 };
+  const muted = { r: 98, g: 112, b: 138 };
+  const line = { r: 220, g: 231, b: 248 };
+  const margin = 15;
+  const pageW = 210;
+  const pageH = 297;
+  const bottom = pageH - 15;
+  const contentW = pageW - margin * 2;
+  const state = { y: margin, pages: 1 };
+
+  const setInk = (color = ink) => doc.setTextColor(color.r, color.g, color.b);
+  const fill = (color) => doc.setFillColor(color.r, color.g, color.b);
+  const stroke = (color) => doc.setDrawColor(color.r, color.g, color.b);
+
+  const ensure = (need) => {
+    if (state.y + need <= bottom) return;
+    doc.addPage();
+    state.pages += 1;
+    state.y = dnpPdfContinuationHeader(doc, summary, accent, ink, muted, margin);
+  };
+
+  const sectionTitle = (title) => {
+    ensure(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    setInk(ink);
+    dnpPdfWrite(doc, title, margin, state.y);
+    state.y += 2;
+    stroke(line);
+    doc.setLineWidth(0.35);
+    doc.line(margin, state.y, pageW - margin, state.y);
+    state.y += 6;
+  };
+
+  let logo = '';
+  try {
+    logo = typeof getAppLogoDataUrl === 'function' ? await getAppLogoDataUrl() : '';
+    if (logo && typeof addImageSafeForPdf === 'function') {
+      await addImageSafeForPdf(doc, logo, (pageW - 16) / 2, state.y, 16, 16);
+    } else if (logo && typeof addImageSafe === 'function') {
+      addImageSafe(doc, logo, (pageW - 16) / 2, state.y, 16, 16);
+    }
+  } catch (error) {
+    console.warn('Logo do resumo DNP não carregado.', error);
+  }
+  state.y += 16;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  setInk(ink);
+  dnpPdfWrite(doc, 'cReScer juntos', pageW / 2, state.y, { align: 'center' });
+  state.y += 8;
+  doc.setFontSize(16);
+  dnpPdfWrite(doc, 'Desenvolvimento Neuropsicomotor', pageW / 2, state.y, { align: 'center' });
+  state.y += 8;
+
+  fill({ r: 246, g: 249, b: 253 });
+  stroke(line);
+  doc.setLineWidth(0.2);
+  doc.roundedRect(margin, state.y, contentW, 28, 3, 3, 'FD');
+  const infoY = state.y + 7;
+  const col2 = margin + contentW / 2 + 4;
+  const info = [
+    [margin + 6, 'Criança', summary.name],
+    [margin + 6, 'Idade atual', summary.age],
+    [margin + 6, 'Documento gerado em', summary.generatedAt],
+    [col2, 'Prematuridade / necessidade especial', summary.special],
+    [col2, 'Etapa de referência atual', summary.reference]
+  ];
+  info.slice(0, 3).forEach((row, index) => {
+    fill(accent);
+    doc.circle(row[0], infoY + index * 7 - 1, 1.05, 'F');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    setInk(muted);
+    dnpPdfWrite(doc, row[1], row[0] + 4, infoY + index * 7 - 2.4);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    setInk(ink);
+    dnpPdfWrite(doc, row[2], row[0] + 4, infoY + index * 7 + 1.6);
+  });
+  info.slice(3).forEach((row, index) => {
+    fill(accent);
+    doc.circle(row[0], infoY + index * 10 - 1, 1.05, 'F');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    setInk(muted);
+    dnpPdfWrite(doc, row[1], row[0] + 4, infoY + index * 10 - 2.4);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    setInk(ink);
+    const lines = dnpPdfLines(doc, row[2], contentW / 2 - 14);
+    lines.slice(0, 2).forEach((lineText, lineIndex) => dnpPdfWrite(doc, lineText, row[0] + 4, infoY + index * 10 + 1.6 + lineIndex * 3.6));
+  });
+  state.y += 34;
+
+  sectionTitle('Etapas preenchidas e marcos');
+  if (!summary.filledStages.length) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    setInk(muted);
+    dnpPdfWrite(doc, 'Sem registro', margin, state.y);
+    state.y += 8;
+  } else {
+    const cols = Math.min(3, summary.filledStages.length);
+    const gap = 4;
+    const colW = (contentW - gap * (cols - 1)) / cols;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    for (let i = 0; i < summary.filledStages.length; i += cols) {
+      const row = summary.filledStages.slice(i, i + cols);
+      const heights = row.map(stage => {
+        let h = 8;
+        stage.items.forEach(item => {
+          const textLines = dnpPdfLines(doc, item.text, colW - 22);
+          h += Math.max(5.2, textLines.length * 3.2) + (item.note ? dnpPdfLines(doc, `Observação: ${item.note}`, colW - 10).length * 3.1 + 0.6 : 0) + 0.8;
+        });
+        return h + 3;
+      });
+      const rowH = Math.max(...heights);
+      ensure(rowH + 2);
+      row.forEach((stage, index) => {
+        const x = margin + index * (colW + gap);
+        let y = state.y;
+        fill({ r: 248, g: 250, b: 253 });
+        stroke(line);
+        doc.setLineWidth(0.2);
+        doc.roundedRect(x, y, colW, rowH, 2.5, 2.5, 'FD');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10.5);
+        setInk(ink);
+        dnpPdfWrite(doc, stage.label, x + 4, y + 6);
+        y += 9;
+        stage.items.forEach(item => {
+          const color = dnpPdfStatusColor(item.positive, accent);
+          fill(item.positive ? accent : muted);
+          doc.circle(x + 6, y + 1, 1.05, 'F');
+          const textW = colW - 28;
+          const textLines = dnpPdfLines(doc, item.text, textW);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8);
+          setInk(ink);
+          textLines.forEach((lineText, lineIndex) => dnpPdfWrite(doc, lineText, x + 9, y + 1.2 + lineIndex * 3.4));
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(7.5);
+          setInk(color);
+          dnpPdfWrite(doc, item.status, x + colW - 4, y + 1.2, { align: 'right' });
+          y += Math.max(5.5, textLines.length * 3.4) + 0.6;
+          if (item.note) {
+            const noteLines = dnpPdfLines(doc, `Observação: ${item.note}`, colW - 10);
+            doc.setFont('helvetica', 'italic');
+            doc.setFontSize(7.5);
+            setInk(muted);
+            noteLines.forEach((lineText, lineIndex) => dnpPdfWrite(doc, lineText, x + 9, y + lineIndex * 3.3));
+            y += noteLines.length * 3.3 + 1;
+          }
+        });
+      });
+      state.y += rowH + 4;
+    }
+  }
+
+  sectionTitle('Para conversar com o médico');
+  const qCols = 2;
+  const qGap = 4;
+  const qW = (contentW - qGap) / 2;
+  for (let i = 0; i < summary.questions.length; i += qCols) {
+    const pair = summary.questions.slice(i, i + qCols);
+    const heights = pair.map(item => {
+      const qLines = dnpPdfLines(doc, item.question, qW - 8);
+      const aLines = dnpPdfLines(doc, item.answer, qW - 8);
+      return 6 + qLines.length * 3.4 + aLines.length * 3.6;
+    });
+    const boxH = Math.max(...heights);
+    ensure(boxH + 3);
+    pair.forEach((item, index) => {
+      const x = margin + index * (qW + qGap);
+      fill({ r: 248, g: 250, b: 253 });
+      stroke(line);
+      doc.roundedRect(x, state.y, qW, boxH, 2.5, 2.5, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      setInk(ink);
+      const qLines = dnpPdfLines(doc, item.question, qW - 8);
+      qLines.forEach((lineText, lineIndex) => dnpPdfWrite(doc, lineText, x + 4, state.y + 5 + lineIndex * 3.4));
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      setInk(item.answer === 'Sem registro' ? muted : ink);
+      const aLines = dnpPdfLines(doc, item.answer, qW - 8);
+      aLines.forEach((lineText, lineIndex) => dnpPdfWrite(doc, lineText, x + 4, state.y + 6 + qLines.length * 3.4 + lineIndex * 3.6));
+    });
+    state.y += boxH + 3;
+  }
+
+  sectionTitle(summary.activityTitle);
+  if (!summary.activities.length) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    setInk(muted);
+    dnpPdfWrite(doc, 'Sem registro', margin, state.y);
+    state.y += 8;
+  } else {
+    summary.activities.forEach(item => {
+      const doubtLines = item.doubt ? dnpPdfLines(doc, `Dúvida: ${item.doubt}`, contentW - 8) : [];
+      const h = 8 + doubtLines.length * 3.4;
+      ensure(h);
+      fill(item.positive ? accent : muted);
+      doc.circle(margin + 2, state.y - 1, 1.05, 'F');
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      setInk(ink);
+      dnpPdfWrite(doc, item.title, margin + 6, state.y);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      setInk(dnpPdfStatusColor(item.positive, accent));
+      dnpPdfWrite(doc, item.status, pageW - margin, state.y, { align: 'right' });
+      state.y += 5;
+      if (item.doubt) {
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(8);
+        setInk(muted);
+        doubtLines.forEach(lineText => {
+          dnpPdfWrite(doc, lineText, margin + 6, state.y);
+          state.y += 3.4;
+        });
+      }
+      state.y += 1.5;
+    });
+  }
+
+  sectionTitle('Registros da família');
+  const fGap = 4;
+  const fW = (contentW - fGap * 2) / 3;
+  const familyHeights = summary.family.map(item => {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    const texts = item.texts.length ? item.texts : ['Sem registro'];
+    return 8 + texts.reduce((sum, text) => sum + dnpPdfLines(doc, text, fW - 8).length * 3.2, 0);
+  });
+  const familyH = Math.max(...familyHeights);
+  ensure(familyH + 2);
+  summary.family.forEach((item, index) => {
+    const x = margin + index * (fW + fGap);
+    fill({ r: 248, g: 250, b: 253 });
+    stroke(line);
+    doc.roundedRect(x, state.y, fW, familyH, 2.5, 2.5, 'FD');
+    fill(accent);
+    doc.circle(x + 5, state.y + 5, 1.05, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    setInk(ink);
+    dnpPdfWrite(doc, item.label, x + 8, state.y + 6);
+    const texts = item.texts.length ? item.texts : ['Sem registro'];
+    let y = state.y + 11;
+    texts.forEach(text => {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      setInk(text === 'Sem registro' ? muted : ink);
+      dnpPdfLines(doc, text, fW - 8).forEach(lineText => {
+        dnpPdfWrite(doc, lineText, x + 4, y);
+        y += 3.4;
+      });
+      y += 1;
+    });
+  });
+  state.y += familyH + 6;
+
+  const pages = doc.internal.getNumberOfPages();
+  for (let page = 1; page <= pages; page += 1) {
+    doc.setPage(page);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    setInk(muted);
+    dnpPdfWrite(doc, `${page}`, pageW / 2, pageH - 8, { align: 'center' });
+  }
+
+  if (download) doc.save(`resumo-dnp-${safeFileName(summary.name)}.pdf`);
+  return doc;
+}
+
+function dnpPdfContinuationHeader(doc, summary, accent, ink, muted, margin) {
+  const logoY = 10;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(ink.r, ink.g, ink.b);
+  dnpPdfWrite(doc, 'cReScer juntos', margin, logoY + 4);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(muted.r, muted.g, muted.b);
+  dnpPdfWrite(doc, `${summary.name} · Desenvolvimento Neuropsicomotor`, margin, logoY + 9);
+  doc.setDrawColor(220, 231, 248);
+  doc.setLineWidth(0.3);
+  doc.line(margin, logoY + 12, 195, logoY + 12);
+  return 24;
+}
+
 if (typeof window !== 'undefined') {
   window.DNP = {
     normalize: normalizeDnpState,
@@ -1092,6 +1521,8 @@ if (typeof window !== 'undefined') {
     deleteFiles: deleteDnpFiles,
     collectFiles: dnpCollectFileRefs,
     addToPdf: addDnpToChildPdf,
+    generateDoctorPdf: generateDnpDoctorPdf,
+    doctorSummary: dnpDoctorSummary,
     countStage: dnpCountStage,
     referenceStage: dnpReferenceStage
   };
