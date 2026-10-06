@@ -75,7 +75,8 @@ function emptyChild() {
     emergenciaNome: '', emergenciaTelefone: '', pediatraNome: '', pediatraTelefone: '', pediatraEmail: '', clinicaPediatra: '',
     observacoes: '', miniBio: '', profilePhoto: '',
     themeMode: 'auto', themeGender: 'masculino', themeStage: 'bebe',
-    medications: [], exams: [], medicalFiles: [], memories: [], albums: [], events: [], milestones: [], letters: []
+    medications: [], exams: [], medicalFiles: [], memories: [], albums: [], events: [], milestones: [], letters: [],
+    dnp: typeof emptyDnpState === 'function' ? emptyDnpState() : { catalogVersion: 1, healthOnce: {}, answers: {}, answerHistory: [], recurring: {}, concerns: [], skillLosses: [], activities: {}, activityHistory: [], extraAchievements: [] }
   };
 }
 
@@ -131,6 +132,8 @@ function normalizeChild(child) {
   child.events ||= [];
   child.milestones ||= [];
   child.letters ||= [];
+  if (typeof normalizeDnpState === 'function') normalizeDnpState(child);
+  else child.dnp ||= { catalogVersion: 1, healthOnce: {}, answers: {}, answerHistory: [], recurring: {}, concerns: [], skillLosses: [], activities: {}, activityHistory: [], extraAchievements: [] };
   child.profilePhoto ||= '';
   child.miniBio ||= '';
   if (!['auto', 'manual', 'default'].includes(child.themeMode)) child.themeMode = 'auto';
@@ -335,6 +338,7 @@ function switchTab(tabId, opts = {}) {
   qsa('.bottom-nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tabTarget === tabId));
   qsa('.home-nav-card').forEach(btn => btn.classList.toggle('active-card', btn.dataset.tabTarget === tabId));
   if (tabId === 'cartas' && !opts.letterView) showLettersListView();
+  if (tabId === 'dnp' && typeof renderDnp === 'function') renderDnp();
   if (opts.closeMenu) closeSideMenu();
   if (opts.scroll !== false) {
     requestAnimationFrame(() => {
@@ -633,6 +637,7 @@ async function hydrateAllLocalFiles(targetState = state) {
         });
       }
     }
+    if (typeof hydrateDnpFiles === 'function') await hydrateDnpFiles(child);
   }
   return changed;
 }
@@ -766,6 +771,7 @@ async function deleteFilesForChild(child) {
   for (const memory of child.memories || []) for (const asset of memory.files || []) await deleteLocalFileRef(asset);
   for (const milestone of child.milestones || []) await deleteLocalFileRef(milestone.photo);
   for (const letter of child.letters || []) await deleteLocalFileRef(letter.audioFile);
+  if (typeof deleteDnpFiles === 'function') await deleteDnpFiles(child);
 }
 
 async function fileToMemoryAsset(file, existingId = '', extra = {}) {
@@ -2673,12 +2679,14 @@ function renderAll() {
   populateMilestoneCategories();
   renderGrowthCharts();
   renderMilestones();
+  if (typeof renderDnp === 'function') renderDnp({ keepScroll: true });
 }
 
 function addFormListeners() {
   $('childSelect').addEventListener('change', event => {
     state.activeChildId = event.target.value;
     activeAlbumFilter = 'all';
+    if (typeof dnpUi !== 'undefined') dnpUi.stageId = '';
     saveState();
     renderAll();
   });
@@ -2687,6 +2695,7 @@ function addFormListeners() {
     if ($(id)) $(id).addEventListener('change', event => {
       state.activeChildId = event.target.value;
       activeAlbumFilter = 'all';
+      if (typeof dnpUi !== 'undefined') dnpUi.stageId = '';
       saveState();
       renderAll();
     });
@@ -3132,6 +3141,20 @@ async function exportBackup() {
     for (let index = 0; index < (originalChild.letters || []).length; index += 1) {
       backupChild.letters[index].audioFile = await fileRefForBackup(originalChild.letters[index].audioFile, 'audio-carta');
     }
+    if (originalChild.dnp && backupChild.dnp) {
+      for (let index = 0; index < (originalChild.dnp.concerns || []).length; index += 1) {
+        backupChild.dnp.concerns[index].files = [];
+        for (const asset of originalChild.dnp.concerns[index].files || []) {
+          backupChild.dnp.concerns[index].files.push(await fileRefForBackup(asset, asset.name || 'anexo-dnp'));
+        }
+      }
+      for (let index = 0; index < (originalChild.dnp.skillLosses || []).length; index += 1) {
+        backupChild.dnp.skillLosses[index].files = [];
+        for (const asset of originalChild.dnp.skillLosses[index].files || []) {
+          backupChild.dnp.skillLosses[index].files.push(await fileRefForBackup(asset, asset.name || 'anexo-dnp'));
+        }
+      }
+    }
   }
   const content = JSON.stringify({ exportedAt: new Date().toISOString(), app: 'cReScer juntos', version: 5, state: exportState }, null, 2);
   downloadText(`backup-crescer-juntos-${new Date().toISOString().slice(0,10)}.json`, content, 'application/json');
@@ -3441,6 +3464,10 @@ async function generateSelectedChildPdf() {
     y = await addEvolutionChartToPdf(doc, y, child, 'height');
     y = await addEvolutionChartToPdf(doc, y, child, 'headCircumference');
     y = await addEvolutionChartToPdf(doc, y, child, 'bmi');
+  }
+
+  if (sections.includes('dnp') && typeof addDnpToChildPdf === 'function') {
+    y = addDnpToChildPdf(doc, child, y);
   }
 
   if (sections.includes('memoriasFavoritas')) {
@@ -3805,6 +3832,7 @@ async function init() {
   registerServiceWorker();
   initTabs();
   addFormListeners();
+  if (typeof initDnp === 'function') initDnp();
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => false);
   await hydrateAllLocalFiles(state);
   saveState();

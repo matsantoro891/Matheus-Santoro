@@ -1525,3 +1525,37 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
   .letter-card-actions { gap: 5px; padding-top: 8px; }
   .letter-action-btn { padding: 5px 8px; font-size: 0.68rem; width: auto; }
 }
+
+.dnp-child-top, .dnp-stage-head, .dnp-status-stack { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.dnp-status-stack { flex-direction: column; align-items: flex-end; }
+.dnp-save-badge { background: #e8f8ef; color: #1e7a46; }
+.dnp-disclaimer, .dnp-example { font-size: 0.92rem; }
+.dnp-quick-actions, .dnp-activity-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.dnp-alert-card { border-color: #f3c2c2; background: #fff6f6; }
+.dnp-alert-card h3, .dnp-timeline-alert strong { color: #b42318; }
+.dnp-stage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; margin-top: 14px; }
+.dnp-stage-chip {
+  display: grid; gap: 4px; text-align: left; padding: 12px; border-radius: 18px;
+  border: 1px solid var(--line); background: #fff; color: var(--ink);
+}
+.dnp-stage-chip small { color: var(--muted); font-weight: 600; }
+.dnp-stage-chip.selected { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(77, 141, 247, 0.2); }
+.dnp-stage-chip.kind-reference { background: var(--soft); }
+.dnp-stage-chip.kind-future { opacity: 0.78; }
+.dnp-area { margin-top: 22px; padding-top: 8px; border-top: 1px solid var(--line); }
+.dnp-milestone { padding: 14px 0; border-bottom: 1px solid #eef3fb; }
+.dnp-milestone-text { color: var(--ink); font-weight: 700; margin: 0 0 8px; }
+.dnp-status-options, .dnp-achieved { display: grid; gap: 8px; margin: 10px 0; }
+.dnp-radio { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.dnp-radio.selected { border-color: var(--primary); background: var(--soft); }
+.dnp-milestone.is-alert { background: #fff8f8; margin: 0 -12px; padding: 14px 12px; border-radius: 16px; }
+.dnp-activity-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.dnp-activity-card { border: 1px solid var(--line); border-radius: 18px; padding: 16px; background: #fff; }
+.dnp-activity-card p { color: var(--ink); }
+.dnp-dialog-card { border-color: var(--primary); }
+.dnp-timeline .item { align-items: flex-start; }
+@media (max-width: 720px) {
+  .dnp-activity-grid, .dnp-status-stack { grid-template-columns: 1fr; align-items: stretch; }
+  .dnp-child-top, .dnp-status-stack { align-items: stretch; }
+  .dnp-quick-actions .primary, .dnp-quick-actions .secondary { width: 100%; }
+}

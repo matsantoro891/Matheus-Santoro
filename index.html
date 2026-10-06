@@ -11,12 +11,14 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/favicon.png" />
-  <link rel="stylesheet" href="styles.css?v=36" />
+  <link rel="stylesheet" href="styles.css?v=37" />
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script defer src="growth-reference.js"></script>
   <script defer src="growth-reference-ext.js"></script>
-  <script defer src="app.js?v=36"></script>
+  <script defer src="dnp-catalog.js?v=37"></script>
+  <script defer src="dnp.js?v=37"></script>
+  <script defer src="app.js?v=37"></script>
 </head>
 <body>
   <header class="app-header">
@@ -86,6 +88,7 @@
           <button type="button" class="home-nav-card active-card" data-tab-target="memorias"><span class="home-nav-icon">🖼️</span><span>Memórias</span></button>
           <button type="button" class="home-nav-card" data-tab-target="agenda"><span class="home-nav-icon">📅</span><span>Eventos</span></button>
           <button type="button" class="home-nav-card full-width" data-tab-target="evolucao"><span class="home-nav-icon">📈</span><span>Evolução</span></button>
+          <button type="button" class="home-nav-card full-width" data-tab-target="dnp"><span class="home-nav-icon">🧠</span><span>Desenvolvimento Neuropsicomotor</span></button>
           <button type="button" class="home-nav-card full-width" data-tab-target="cartas"><span class="home-nav-icon">💌</span><span>Cartas para meu Filho</span></button>
         </div>
 
@@ -121,6 +124,7 @@
             <label><input type="checkbox" name="pdfSection" value="agenda" checked /> Calendário/Eventos</label>
             <label><input type="checkbox" name="pdfSection" value="proximos" checked /> Próximos eventos da agenda</label>
             <label><input type="checkbox" name="pdfSection" value="evolucao" checked /> Evolução/Marcos</label>
+            <label><input type="checkbox" name="pdfSection" value="dnp" /> Desenvolvimento Neuropsicomotor</label>
             <label><input type="checkbox" name="pdfSection" value="memoriasFavoritas" checked /> Memórias favoritas/principais</label>
           </div>
           <div class="actions">
@@ -409,6 +413,14 @@
         <article class="card"><h3>Memórias favoritas</h3><div id="favoriteMemories" class="memory-grid list-view"></div></article>
         <article class="card"><h3>Estatísticas rápidas</h3><div id="favoriteStats" class="stats-grid"></div></article>
       </div>
+    </section>
+
+    <section id="dnp" class="tab-panel">
+      <div class="section-head">
+        <h2>Desenvolvimento Neuropsicomotor</h2>
+        <p>Acompanhe os marcos da cartilha com a criança ativa e leve essas anotações para a conversa com o médico.</p>
+      </div>
+      <div id="dnpApp"></div>
     </section>
 
     <section id="cartas" class="tab-panel">
