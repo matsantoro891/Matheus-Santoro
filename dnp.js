@@ -359,6 +359,7 @@ function dnpSetRecurring(stageId, patch) {
 function dnpSetActivity(activityId, status) {
   const child = dnpChild();
   const previous = child.dnp.activities[activityId];
+  if (previous?.status === status) return;
   if (previous && previous.status && previous.status !== status) {
     child.dnp.activityHistory.push({
       id: uid(),
@@ -374,7 +375,7 @@ function dnpSetActivity(activityId, status) {
     activityId,
     status,
     note: previous?.note || '',
-    recordedAt: dnpNow(),
+    recordedAt: previous?.recordedAt || dnpNow(),
     updatedAt: dnpNow()
   };
   dnpSave();
@@ -399,6 +400,18 @@ function dnpSetActivityNote(activityId, note, { collapse = true } = {}) {
   dnpUi.openActivityNoteId = '';
   renderDnp({ keepScroll: true });
   return true;
+}
+
+function dnpTrackedActivities(child, status) {
+  return Object.values(child.dnp.activities || {})
+    .filter(item => item.status === status && (!item.childId || item.childId === child.id))
+    .map(item => {
+      const activity = DNP_CATALOG.activities.find(entry => entry.id === item.activityId);
+      if (!activity) return null;
+      return { item, activity, stage: dnpStageById(activity.stageId) };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.stage?.months || 0) - (b.stage?.months || 0) || String(a.activity.title).localeCompare(b.activity.title, 'pt-BR'));
 }
 
 function dnpActivityTipsText(stage) {
@@ -516,6 +529,7 @@ function renderDnp(opts = {}) {
   const ageText = child.nascimento ? calculateAgeText(child.nascimento) : 'Cadastre a data de nascimento para calcular a idade.';
   const hasAlerts = child.dnp.concerns.length || child.dnp.skillLosses.length || counts.not_yet > 0;
   const specialRecord = String(child.registroEspecial || '').trim();
+  const tryActivities = dnpTrackedActivities(child, 'try');
 
   root.innerHTML = `
     <article class="card dnp-child-card">
@@ -531,6 +545,13 @@ function renderDnp(opts = {}) {
 
     <div class="dnp-quick-actions">
       ${['concern', 'loss'].map(type => renderDnpEntrySection(child, type)).join('')}
+    </div>
+    <div class="dnp-try-entry">
+      <button type="button" class="secondary dnp-entry-toggle" data-dnp-action="open-try-list">
+        <span>Atividades que quero experimentar${tryActivities.length ? ` · ${tryActivities.length}` : ''}</span>
+        <span class="dnp-entry-arrow" aria-hidden="true">▼</span>
+      </button>
+      <p class="muted dnp-try-caption">As atividades marcadas como ‘Quero experimentar’ ficam reunidas ao final desta página para você acompanhar e marcar quando já estiverem fazendo.</p>
     </div>
 
     ${hasAlerts ? `
@@ -597,6 +618,8 @@ function renderDnp(opts = {}) {
       <p class="muted">Novas respostas não apagam o que já foi registrado. Preocupações e possíveis perdas permanecem mesmo se o checklist mudar depois.</p>
       <div class="list dnp-timeline">${renderDnpTimeline(child)}</div>
     </article>
+
+    ${renderDnpTryList(child, tryActivities)}
   `;
 
   if (scroll != null) window.scrollTo({ top: scroll, behavior: 'instant' in window ? 'instant' : 'auto' });
@@ -708,6 +731,39 @@ function renderDnpActivityCard(child, activity) {
   `;
 }
 
+function renderDnpTryList(child, openItems) {
+  const doneItems = dnpTrackedActivities(child, 'doing');
+  const renderGroup = (title, items, done) => `
+    <h4>${title}</h4>
+    <div class="dnp-try-group">
+      ${items.length ? items.map(entry => renderDnpTryItem(entry, done)).join('') : `<p class="muted">${done ? 'Nenhuma atividade realizada ainda.' : 'Nenhuma atividade em aberto.'}</p>`}
+    </div>
+  `;
+  return `
+    <article class="card dnp-try-list" id="dnp-try-list">
+      <h3>Atividades que quero experimentar</h3>
+      ${renderGroup('Em aberto', openItems, false)}
+      ${renderGroup('Realizadas', doneItems, true)}
+    </article>
+  `;
+}
+
+function renderDnpTryItem(entry, done) {
+  const { activity, stage } = entry;
+  return `
+    <article class="dnp-try-item">
+      <label class="dnp-try-check">
+        <input type="checkbox" data-dnp-action="toggle-try-done" data-activity-id="${escapeHtml(activity.id)}" ${done ? 'checked' : ''} aria-label="${done ? 'Marcar como em aberto' : 'Marcar como realizada'}" />
+      </label>
+      <div class="dnp-try-item-body">
+        <h4>${escapeHtml(activity.title)}</h4>
+        ${stage ? `<small>${escapeHtml(stage.label)}</small>` : ''}
+        <p>${escapeHtml(activity.text)}</p>
+      </div>
+    </article>
+  `;
+}
+
 function renderDnpTimeline(child) {
   const items = dnpTimeline(child);
   if (!items.length) return '<p class="muted">Ainda não há registros nesta área para a criança ativa.</p>';
@@ -807,17 +863,23 @@ function initDnp() {
       dnpUi.openActivityNoteId = button.dataset.activityId;
       renderDnp({ keepScroll: true });
     }
+    if (action === 'open-try-list') {
+      document.getElementById('dnp-try-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
     if (action === 'set-activity') {
       const activityId = button.dataset.activityId;
       const status = button.dataset.status;
       const current = dnpChild().dnp.activities[activityId] || {};
-      if (status === 'question' && current.status === 'question') {
-        dnpUi.openActivityNoteId = dnpUi.openActivityNoteId === activityId ? '' : activityId;
-        renderDnp({ keepScroll: true });
-      } else {
-        dnpUi.openActivityNoteId = status === 'question' ? activityId : (dnpUi.openActivityNoteId === activityId ? '' : dnpUi.openActivityNoteId);
-        dnpSetActivity(activityId, status);
+      if (status === current.status) {
+        if (status === 'question') {
+          dnpUi.openActivityNoteId = dnpUi.openActivityNoteId === activityId ? '' : activityId;
+          renderDnp({ keepScroll: true });
+        }
+        return;
       }
+      dnpUi.openActivityNoteId = status === 'question' ? activityId : (dnpUi.openActivityNoteId === activityId ? '' : dnpUi.openActivityNoteId);
+      if (status === 'try') showToast('Adicionado às atividades que quero experimentar.');
+      dnpSetActivity(activityId, status);
     }
 
     const type = button.dataset.entryType;
@@ -875,6 +937,7 @@ function initDnp() {
     if (action === 'set-status') dnpSetAnswer(field.dataset.milestoneId, { status: field.value });
     if (action === 'set-achieved-when') dnpSetAnswer(field.dataset.milestoneId, { achievedWhen: field.value, status: 'does' });
     if (action === 'set-achieved-date') dnpSetAnswer(field.dataset.milestoneId, { achievedWhen: 'approx', achievedDate: field.value, status: 'does' });
+    if (action === 'toggle-try-done') dnpSetActivity(field.dataset.activityId, field.checked ? 'doing' : 'try');
   });
 
   root.addEventListener('focusout', event => {
