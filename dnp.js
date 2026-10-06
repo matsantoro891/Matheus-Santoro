@@ -572,7 +572,7 @@ function renderDnp(opts = {}) {
     <article class="card">
       <h3>Etapa de referência</h3>
       ${reference.reason === 'missing-birth' ? '<p>Informe a data de nascimento no cadastro para o aplicativo indicar a etapa da idade cronológica.</p>' : ''}
-      ${reference.reason === 'before-first' ? '<p>Pela idade cronológica, a primeira etapa da cartilha (2 meses) ainda é futura. Você pode olhar as etapas, mas os itens não viram pendência.</p>' : ''}
+      ${reference.reason === 'before-first' ? '<p>Pela idade cronológica, a primeira etapa (2 meses) ainda é futura. Você pode olhar as etapas, mas os itens não viram pendência.</p>' : ''}
       ${reference.stage ? `<p>Pela idade cronológica, a etapa de referência é <strong>${escapeHtml(reference.stage.label)}</strong>.</p>` : ''}
       <p class="muted">Se a criança nasceu prematura, converse com o médico sobre qual idade usar na consulta.</p>
       <div class="dnp-stage-picker">
@@ -581,7 +581,7 @@ function renderDnp(opts = {}) {
           <span class="dnp-entry-arrow" aria-hidden="true">${dnpUi.stagePickerOpen ? '▲' : '▼'}</span>
         </button>
         ${dnpUi.stagePickerOpen ? `
-          <div class="dnp-stage-options" id="dnp-stage-options" role="listbox" aria-label="Etapas da cartilha">
+          <div class="dnp-stage-options" id="dnp-stage-options" role="listbox" aria-label="Etapas de desenvolvimento">
             ${DNP_CATALOG.stages.map(item => {
               const itemKind = dnpStageKind(item, reference);
               const selected = item.id === stage.id;
@@ -600,8 +600,7 @@ function renderDnp(opts = {}) {
       <div class="dnp-stage-head">
         <div>
           <h3>Marcos aos ${escapeHtml(stage.label)}</h3>
-          <p>${kind === 'future' ? 'Esta etapa ainda é futura para a idade cronológica. Você pode ler os itens, mas eles não ficam como pendência.' : 'Responda o que a família já observou. Não é obrigatório preencher etapas anteriores.'}</p>
-          <p class="muted">${escapeHtml(dnpStatusHint(child, stage))} “Não sei / não tive oportunidade” não conta como “ainda não faz”.</p>
+          ${kind === 'future' ? '<p>Esta etapa ainda é futura para a idade cronológica. Você pode ler os itens, mas eles não ficam como pendência.</p>' : ''}
         </div>
       </div>
       ${DNP_CATALOG.areas.map(area => renderDnpArea(child, stage, area, kind)).join('')}
@@ -727,7 +726,6 @@ function renderDnpActivityCard(child, activity) {
     <article class="dnp-activity-card ${dnpUi.pdfMissing?.activityIds?.includes(activity.id) ? 'dnp-missing' : ''}">
       <h4>${escapeHtml(activity.title)}</h4>
       <p>${escapeHtml(activity.text)}</p>
-      ${activity.flags.length ? '<p class="muted">Orientação da cartilha, pendente de revisão médica antes de ser tratada como regra definitiva no app.</p>' : ''}
       <div class="dnp-activity-actions">
         ${Object.values(DNP_ACTIVITY_STATUS).map(status => `
           <button type="button" class="${current.status === status.id ? 'primary' : 'secondary'}" data-dnp-action="set-activity" data-activity-id="${activity.id}" data-status="${status.id}">${escapeHtml(status.label)}</button>
