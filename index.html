@@ -18,7 +18,7 @@
   <script defer src="growth-reference-ext.js"></script>
   <script defer src="dnp-catalog.js?v=38"></script>
   <script defer src="dnp.js?v=52"></script>
-  <script defer src="app.js?v=47"></script>
+  <script defer src="app.js?v=48"></script>
 </head>
 <body>
   <header class="app-header">
@@ -172,17 +172,13 @@
         <h2>Saúde</h2>
         <p>Registre medicações, exames e documentos médicos.</p>
       </div>
-      <div class="health-sections-note card subtle-card">
-        <strong>Organização da Saúde:</strong> Medicações • Consultas • Exames • Vacinas • Arquivos Médicos • Crescimento futuro • Histórico de Saúde futuro
-      </div>
       <div class="two-columns">
         <article class="card">
-          <h3>Medicações</h3>
+          <h3>Medicação/Vacina</h3>
           <form id="medForm" class="stack-form">
             <label>Nome do medicamento<input name="nome" required /></label>
             <label>Dose<input name="dose" placeholder="Ex.: 5 ml, 1 comprimido" /></label>
             <label>Frequência<input name="frequencia" placeholder="Ex.: 8/8 h, 1x ao dia" /></label>
-            <label>Horário<input name="horario" placeholder="Ex.: 08:00 e 20:00" /></label>
             <label>Data de início<input name="inicio" type="date" /></label>
             <label>Data de término<input name="termino" type="date" /></label>
             <label>Observações<textarea name="observacoes" rows="3"></textarea></label>
@@ -204,7 +200,7 @@
       </div>
       <article class="card">
         <h3>Arquivos Médicos</h3>
-        <p>Centralize documentos de saúde da criança, como laudos, receitas, encaminhamentos, relatórios e arquivos enviados pelo pediatra.</p>
+        <p>Documentos de saúde, Relatórios, Receitas</p>
         <form id="medicalFileForm" class="grid-form compact">
           <label>Data<input name="date" type="date" /></label>
           <label>Título do documento<input name="title" placeholder="Ex.: Exame de sangue" required /></label>
