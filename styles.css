@@ -1568,6 +1568,43 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
 .dnp-disclaimer, .dnp-example { font-size: 0.92rem; }
 .dnp-special-record { white-space: pre-wrap; overflow-wrap: anywhere; }
 .dnp-quick-actions, .dnp-activity-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.dnp-try-entry { width: 100%; display: grid; gap: 6px; min-width: 0; margin: 0 0 18px; }
+.dnp-try-entry .dnp-entry-toggle { width: 100%; }
+.dnp-try-caption { margin: 0; font-size: 0.82rem; line-height: 1.45; max-width: 760px; overflow-wrap: anywhere; }
+.dnp-try-list { max-width: 760px; min-width: 0; }
+.dnp-try-group { display: grid; gap: 10px; margin: 10px 0 18px; }
+.dnp-try-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  min-width: 0;
+}
+.dnp-try-item-body { min-width: 0; }
+.dnp-try-item h4 { margin: 0 0 4px; overflow-wrap: anywhere; }
+.dnp-try-item p { margin: 4px 0 0; overflow-wrap: anywhere; }
+.dnp-try-item small { color: var(--muted); font-weight: 700; }
+.dnp-try-check {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  margin: 0;
+}
+.dnp-try-check input[type="checkbox"] {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  accent-color: var(--primary);
+}
 .dnp-alert-card { border-color: #f3c2c2; background: #fff6f6; }
 .dnp-alert-card h3, .dnp-timeline-alert strong { color: #b42318; }
 .dnp-stage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; margin-top: 14px; }
