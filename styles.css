@@ -932,6 +932,7 @@ body[data-theme="infantil-feminino"] .heart-chip {
 .app-header .brand p { font-size: 0.92rem; }
 
 .social-home { display: grid; gap: 18px; }
+.home-scene { display: grid; gap: 18px; }
 .cardless { box-shadow: none; border: 0; background: transparent; }
 .home-hero {
   position: relative;
@@ -1233,6 +1234,16 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
   .home-shortcuts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
+  body[data-theme-mode="decorativo"] #inicio {
+    background-image: none;
+  }
+  body[data-theme-mode="decorativo"] .home-scene {
+    background-color: transparent;
+    background-image: var(--theme-bg);
+    background-repeat: no-repeat;
+    background-position: center top;
+    background-size: 100% 100%;
+  }
   .app-header { display: none; }
   .home-theme-notice { flex-direction: column; align-items: stretch; }
   .layout { padding-top: 0; }
