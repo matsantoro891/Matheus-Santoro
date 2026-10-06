@@ -133,6 +133,7 @@ button, .import-label { cursor: pointer; }
 .profile-inputs { flex: 1; display: grid; gap: 12px; }
 
 .badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.badges[hidden] { display: none; margin: 0; }
 .badge { padding: 6px 10px; background: var(--soft); color: var(--primary-dark); border-radius: 999px; font-size: 0.82rem; font-weight: 750; }
 
 .grid-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
@@ -381,8 +382,8 @@ button, .import-label {
 .manual-list { display: grid; gap: 10px; max-height: 260px; overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 16px; margin: 12px 0; }
 
 .qr-canvas { display: inline-grid; padding: 12px; border: 1px solid var(--line); border-radius: 18px; background: white; margin: 8px 0; }
-.qr-link-row { display: flex; gap: 10px; margin-top: 8px; }
-.qr-link-row input { flex: 1; }
+.qr-link-row { display: flex; gap: 10px; margin-top: 8px; min-width: 0; flex-wrap: wrap; }
+.qr-link-row input { flex: 1; min-width: 0; width: 100%; overflow: hidden; text-overflow: ellipsis; }
 
 .milestone-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .milestone-card { display: grid; gap: 8px; }
@@ -946,10 +947,21 @@ body[data-theme="infantil-feminino"] .heart-chip {
 }
 body[data-theme-mode="decorativo"] #inicio {
   background-color: transparent;
+  background-image: none;
+  position: relative;
+  isolation: isolate;
+}
+body[data-theme-mode="decorativo"] #inicio::before {
+  content: "";
+  position: absolute;
+  inset: 0;
   background-image: var(--theme-bg);
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center top;
+  filter: saturate(1.03);
+  z-index: -1;
+  pointer-events: none;
 }
 body[data-theme-mode="decorativo"] .home-hero {
   background: transparent;
@@ -1069,7 +1081,7 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
 .age-line { margin: 6px 0 0; color: #617198; font-size: 1.02rem; font-weight: 600; }
 .bio-bubble-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr;
   gap: 10px;
   margin-top: 12px;
   align-items: center;
@@ -1237,12 +1249,26 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
   body[data-theme-mode="decorativo"] #inicio {
     background-image: none;
   }
+  body[data-theme-mode="decorativo"] #inicio::before {
+    content: none;
+  }
   body[data-theme-mode="decorativo"] .home-scene {
     background-color: transparent;
+    background-image: none;
+    position: relative;
+    isolation: isolate;
+  }
+  body[data-theme-mode="decorativo"] .home-scene::before {
+    content: "";
+    position: absolute;
+    inset: 0;
     background-image: var(--theme-bg);
     background-repeat: no-repeat;
     background-position: center;
     background-size: cover;
+    filter: saturate(1.03);
+    z-index: -1;
+    pointer-events: none;
   }
   .app-header { display: none; }
   .home-theme-notice { flex-direction: column; align-items: stretch; }
@@ -1251,7 +1277,7 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
   .profile-social-card { grid-template-columns: 1fr; justify-items: start; }
   .profile-avatar-wrap { width: 104px; }
   .profile-social-card .profile-photo { width: 104px; height: 104px; }
-  .bio-bubble-row { grid-template-columns: 1fr auto; }
+  .bio-bubble-row { grid-template-columns: 1fr; }
   .favorite-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 520px) {
