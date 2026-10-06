@@ -11,14 +11,14 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/favicon.png" />
-  <link rel="stylesheet" href="styles.css?v=38" />
+  <link rel="stylesheet" href="styles.css?v=40" />
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script defer src="growth-reference.js"></script>
   <script defer src="growth-reference-ext.js"></script>
   <script defer src="dnp-catalog.js?v=37"></script>
   <script defer src="dnp.js?v=37"></script>
-  <script defer src="app.js?v=38"></script>
+  <script defer src="app.js?v=39"></script>
 </head>
 <body>
   <header class="app-header">
@@ -71,20 +71,9 @@
         <div class="home-shortcuts-grid">
           <button type="button" class="home-nav-card" data-tab-target="cadastro"><span class="home-nav-icon">👶</span><span>Cadastro</span></button>
           <button type="button" class="home-nav-card" data-tab-target="saude"><span class="home-nav-icon">💙</span><span>Saúde</span></button>
-          <button type="button" class="home-nav-card full-width" data-tab-target="evolucao"><span class="home-nav-icon">📈</span><span>Evolução</span></button>
+          <button type="button" class="home-nav-card full-width" data-tab-target="evolucao"><span class="home-nav-icon">📈</span><span>Desenvolvimento físico</span></button>
           <button type="button" class="home-nav-card full-width" data-tab-target="dnp"><span class="home-nav-icon">🧠</span><span>Desenvolvimento Neuropsicomotor</span></button>
           <button type="button" class="home-nav-card full-width" data-tab-target="cartas"><span class="home-nav-icon">💌</span><span>Cartas para meu Filho</span></button>
-        </div>
-
-        <div id="homeDecorStrip" class="home-decor-strip card">
-          <div class="toy toy-m" aria-hidden="true">⚽</div>
-          <div class="toy toy-m" aria-hidden="true">📚</div>
-          <div class="toy toy-m" aria-hidden="true">🛴</div>
-          <div class="toy toy-m" aria-hidden="true">✏️</div>
-          <div class="toy toy-f" aria-hidden="true">📚</div>
-          <div class="toy toy-f" aria-hidden="true">🛼</div>
-          <div class="toy toy-f" aria-hidden="true">🌸</div>
-          <div class="toy toy-f" aria-hidden="true">⭐</div>
         </div>
 
         <article class="quick-panel card compact-panel">
@@ -380,18 +369,6 @@
     </section>
   </main>
 
-  
-    <section id="favoritos" class="tab-panel">
-      <div class="section-head">
-        <h2>Favoritos / Rápido</h2>
-        <p>Acesso rápido às informações mais importantes da criança.</p>
-      </div>
-      <div class="favorite-grid">
-        <article class="card"><h3>Evolução recente</h3><div id="favoriteRecentMilestones" class="list"></div></article>
-        <article class="card"><h3>Estatísticas rápidas</h3><div id="favoriteStats" class="stats-grid"></div></article>
-      </div>
-    </section>
-
     <section id="dnp" class="tab-panel">
       <div class="section-head">
         <h2>Desenvolvimento Neuropsicomotor</h2>
@@ -529,7 +506,6 @@
 
   <nav class="bottom-nav" aria-label="Navegação inferior">
     <button type="button" class="bottom-nav-btn active" data-tab-target="inicio"><span>🏠</span><small>Home</small></button>
-    <button type="button" class="bottom-nav-btn" data-tab-target="favoritos"><span>❤️</span><small>Favoritos</small></button>
     <button type="button" class="bottom-nav-btn" data-tab-target="perfilconfig"><span>👤</span><small>Perfil</small></button>
   </nav>
 <footer class="app-footer">
