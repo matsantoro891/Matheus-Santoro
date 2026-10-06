@@ -6,6 +6,7 @@ const DNP_ACTIVITY_STATUS = {
 
 const dnpUi = {
   stageId: '',
+  stagePickerOpen: false,
   openMilestoneId: '',
   openActivityNoteId: '',
   entries: {},
@@ -521,9 +522,13 @@ function renderDnp(opts = {}) {
   const child = dnpChild();
   const scroll = opts.keepScroll ? window.scrollY : null;
   const reference = dnpReferenceStage(child.nascimento);
-  const stage = dnpSelectedStage(child);
+  let stage = dnpSelectedStage(child);
+  let kind = dnpStageKind(stage, reference);
+  if (kind === 'future' && reference.stage) {
+    stage = reference.stage;
+    kind = 'reference';
+  }
   dnpUi.stageId = stage.id;
-  const kind = dnpStageKind(stage, reference);
   const counts = dnpCountStage(child, stage.id);
   const name = child.nome ? `${child.nome} ${child.sobrenome || ''}`.trim() : 'Criança sem nome';
   const ageText = child.nascimento ? calculateAgeText(child.nascimento) : 'Cadastre a data de nascimento para calcular a idade.';
@@ -563,7 +568,7 @@ function renderDnp(opts = {}) {
       <p class="dnp-special-record">${specialRecord ? escapeHtml(specialRecord) : 'Não há registro'}</p>
       ${child.problemas ? `<p><strong>Problemas de saúde no cadastro:</strong> ${escapeHtml(child.problemas)}</p>` : ''}
       <div class="actions">
-        <button type="button" class="secondary" data-dnp-action="go-cadastro">Abrir cadastro da criança</button>
+        <button type="button" class="secondary" data-dnp-action="go-cadastro">Registrar no cadastro da criança</button>
       </div>
     </article>
 
@@ -573,15 +578,24 @@ function renderDnp(opts = {}) {
       ${reference.reason === 'before-first' ? '<p>Pela idade cronológica, a primeira etapa da cartilha (2 meses) ainda é futura. Você pode olhar as etapas, mas os itens não viram pendência.</p>' : ''}
       ${reference.stage ? `<p>Pela idade cronológica, a etapa de referência é <strong>${escapeHtml(reference.stage.label)}</strong>.</p>` : ''}
       <p class="muted">Se a criança nasceu prematura, converse com o médico sobre qual idade usar na consulta.</p>
-      <div class="dnp-stage-grid" role="list">
-        ${DNP_CATALOG.stages.map(item => {
-          const itemKind = dnpStageKind(item, reference);
-          const selected = item.id === stage.id;
-          return `<button type="button" class="dnp-stage-chip ${selected ? 'selected' : ''} kind-${itemKind}" data-dnp-action="select-stage" data-stage-id="${item.id}">
-            <strong>${escapeHtml(item.label)}</strong>
-            <small>${itemKind === 'reference' ? 'Referência agora' : itemKind === 'future' ? 'Etapa futura' : itemKind === 'past' ? 'Etapa anterior' : 'Disponível'}</small>
-          </button>`;
-        }).join('')}
+      <div class="dnp-stage-picker">
+        <button type="button" class="secondary dnp-entry-toggle" data-dnp-action="toggle-stage-picker" aria-expanded="${dnpUi.stagePickerOpen}" aria-controls="dnp-stage-options">
+          <span>${escapeHtml(stage.label)}${kind === 'reference' ? ' · Referência agora' : kind === 'past' ? ' · Etapa anterior' : ''}</span>
+          <span class="dnp-entry-arrow" aria-hidden="true">${dnpUi.stagePickerOpen ? '▲' : '▼'}</span>
+        </button>
+        ${dnpUi.stagePickerOpen ? `
+          <div class="dnp-stage-options" id="dnp-stage-options" role="listbox" aria-label="Etapas da cartilha">
+            ${DNP_CATALOG.stages.map(item => {
+              const itemKind = dnpStageKind(item, reference);
+              const selected = item.id === stage.id;
+              const future = itemKind === 'future';
+              return `<button type="button" class="dnp-stage-option ${selected ? 'is-selected' : ''} ${future ? 'is-future' : ''}" role="option" aria-selected="${selected}" ${future ? 'aria-disabled="true"' : ''} data-dnp-action="${future ? 'blocked-future-stage' : 'select-stage'}" data-stage-id="${item.id}">
+                <strong>${escapeHtml(item.label)}</strong>
+                <small>${itemKind === 'reference' ? 'Referência agora' : itemKind === 'future' ? 'Etapa futura' : itemKind === 'past' ? 'Etapa anterior' : 'Disponível'}</small>
+              </button>`;
+            }).join('')}
+          </div>
+        ` : ''}
       </div>
     </article>
 
@@ -858,9 +872,24 @@ function initDnp() {
     const button = event.target.closest('[data-dnp-action]');
     if (!button) return;
     const action = button.dataset.dnpAction;
+    if (action === 'toggle-stage-picker') {
+      dnpUi.stagePickerOpen = !dnpUi.stagePickerOpen;
+      renderDnp({ keepScroll: true });
+    }
+    if (action === 'blocked-future-stage') {
+      showToast('Idade da criança não compatível para esta etapa');
+    }
     if (action === 'select-stage') {
+      const next = dnpStageById(button.dataset.stageId);
+      const reference = dnpReferenceStage(dnpChild().nascimento);
+      if (next && dnpStageKind(next, reference) === 'future') {
+        showToast('Idade da criança não compatível para esta etapa');
+        return;
+      }
       dnpUi.stageId = button.dataset.stageId;
+      dnpUi.stagePickerOpen = false;
       renderDnp();
+      document.querySelector('.dnp-stage-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     if (action === 'go-cadastro') switchTab('cadastro');
     if (action === 'open-activity-note') {

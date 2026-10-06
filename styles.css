@@ -1610,7 +1610,35 @@ body[data-theme-stage="adolescencia"] .home-hero { background-position: center 4
 }
 .dnp-alert-card { border-color: #f3c2c2; background: #fff6f6; }
 .dnp-alert-card h3, .dnp-timeline-alert strong { color: #b42318; }
-.dnp-stage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; margin-top: 14px; }
+.dnp-stage-card { scroll-margin-top: 24px; }
+@media (min-width: 851px) {
+  .dnp-stage-card { scroll-margin-top: 168px; }
+}
+.dnp-stage-picker { margin-top: 14px; max-width: 760px; min-width: 0; }
+.dnp-stage-options { display: grid; gap: 6px; margin-top: 8px; min-width: 0; }
+.dnp-stage-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  box-shadow: none;
+}
+.dnp-stage-option strong { font-size: 0.95rem; }
+.dnp-stage-option small { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.dnp-stage-option.is-selected { border-color: var(--primary); background: var(--soft); color: var(--primary-dark); }
+.dnp-stage-option.is-future { opacity: 0.62; cursor: not-allowed; }
+@media (max-width: 520px) {
+  .dnp-stage-option { flex-wrap: wrap; }
+  .dnp-stage-option small { white-space: normal; }
+}
 .dnp-stage-chip {
   display: grid; gap: 4px; text-align: left; padding: 12px; border-radius: 18px;
   border: 1px solid var(--line); background: #fff; color: var(--ink);
