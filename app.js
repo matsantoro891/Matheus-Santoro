@@ -3961,7 +3961,7 @@ function maybeRenderSharedSummary() {
 }
 
 function labelFromKey(key) {
-  const labels = { nome: 'Nome', nascimento: 'Nascimento', tipoSanguineo: 'Tipo sanguíneo', alergias: 'Alergias', problemas: 'Problemas de saúde', mae: 'Mãe', telefoneMae: 'Telefone da mãe', pai: 'Pai', telefonePai: 'Telefone do pai', emergencia: 'Emergência', pediatra: 'Pediatra', medicacoes: 'Medicações', exames: 'Exames', arquivosMedicos: 'Arquivos médicos', evolucao: 'Evolução/Marcos', miniBio: 'Mini bio', dnp: 'Desenvolvimento Neuropsicomotor', proximosEventos: 'Próximos eventos' };
+  const labels = { nome: 'Nome', nascimento: 'Nascimento', tipoSanguineo: 'Tipo sanguíneo', alergias: 'Alergias', problemas: 'Problemas de saúde', mae: 'Mãe', telefoneMae: 'Telefone da mãe', pai: 'Pai', telefonePai: 'Telefone do pai', emergencia: 'Emergência', pediatra: 'Pediatra', medicacoes: 'Medicações', exames: 'Exames', arquivosMedicos: 'Arquivos médicos', evolucao: 'Desenvolvimento físico', miniBio: 'Mini bio', dnp: 'Desenvolvimento Neuropsicomotor', proximosEventos: 'Próximos eventos' };
   return labels[key] || key;
 }
 
