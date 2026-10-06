@@ -11,14 +11,14 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/favicon.png" />
-  <link rel="stylesheet" href="styles.css?v=59" />
+  <link rel="stylesheet" href="styles.css?v=60" />
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script defer src="growth-reference.js"></script>
   <script defer src="growth-reference-ext.js"></script>
   <script defer src="dnp-catalog.js?v=38"></script>
   <script defer src="dnp.js?v=52"></script>
-  <script defer src="app.js?v=48"></script>
+  <script defer src="app.js?v=49"></script>
 </head>
 <body>
   <header class="app-header">
@@ -534,6 +534,36 @@
       <img id="examAttachmentViewerImage" class="hidden" alt="Imagem anexada ao exame" />
       <div class="actions">
         <button type="button" id="downloadExamAttachmentFromViewer" class="secondary">Baixar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="profileCropModal" class="modal profile-crop-modal hidden" role="dialog" aria-modal="true" aria-label="Ajustar foto de perfil">
+    <div class="modal-card profile-crop-card">
+      <h3>Ajustar foto de perfil</h3>
+      <p>Arraste para posicionar e use o zoom para enquadrar o recorte 1:1.</p>
+      <div class="profile-crop-stage">
+        <div id="profileCropViewport" class="profile-crop-viewport">
+          <img id="profileCropImage" alt="Foto selecionada" draggable="false" />
+          <div class="profile-crop-frame" aria-hidden="true"></div>
+        </div>
+      </div>
+      <label class="profile-crop-zoom">Zoom<input id="profileCropZoom" type="range" min="1" max="4" step="0.01" value="1" /></label>
+      <div class="actions profile-crop-actions">
+        <button type="button" id="profileCropCancel" class="secondary">Cancelar</button>
+        <button type="button" id="profileCropConfirm" class="primary">Usar foto</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="growthChartViewer" class="modal growth-chart-viewer hidden" role="dialog" aria-modal="true" aria-label="Gráfico de crescimento">
+    <div class="modal-card growth-chart-viewer-card">
+      <button type="button" id="closeGrowthChartViewer" class="modal-close">Fechar</button>
+      <button type="button" id="downloadGrowthChartBtn" class="growth-chart-download" title="Baixar imagem" aria-label="Baixar imagem">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 3v10.17l3.59-3.58L17 11l-5 5-5-5 1.41-1.41L11 13.17V3h1zm-7 16h14v2H5v-2z"/></svg>
+      </button>
+      <div id="growthChartViewerStage" class="growth-chart-viewer-stage">
+        <img id="growthChartViewerImage" alt="Gráfico de crescimento" />
       </div>
     </div>
   </div>

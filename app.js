@@ -43,6 +43,11 @@ let memoryView = 'grid';
 let activeAlbumFilter = 'all';
 let toastTimer = null;
 let themeLoadToken = 0;
+let pendingProfilePhotoFile = null;
+let pendingProfilePhotoChildId = '';
+let profileCropState = null;
+let growthChartViewerType = '';
+let growthChartViewerScale = 1;
 const runtimeObjectUrls = new Set();
 
 function uid() {
@@ -812,6 +817,157 @@ function setImagePreview(container, fileRef, fallback = 'Foto') {
   container.innerHTML = dataUrl ? `<img src="${dataUrl}" alt="Foto da criança">` : fallback;
 }
 
+function assignFileToInput(input, file) {
+  if (!input || !file) return;
+  try {
+    const data = new DataTransfer();
+    data.items.add(file);
+    input.files = data.files;
+  } catch (error) {
+    console.warn(error);
+  }
+}
+
+function profileCropScale() {
+  const viewport = $('profileCropViewport');
+  if (!viewport || !profileCropState?.img) return 1;
+  const size = viewport.clientWidth || 1;
+  const { img, zoom } = profileCropState;
+  return (size / Math.min(img.naturalWidth || 1, img.naturalHeight || 1)) * zoom;
+}
+
+function clampProfileCropOffset() {
+  const viewport = $('profileCropViewport');
+  if (!viewport || !profileCropState?.img) return;
+  const size = viewport.clientWidth;
+  const scale = profileCropScale();
+  const width = profileCropState.img.naturalWidth * scale;
+  const height = profileCropState.img.naturalHeight * scale;
+  profileCropState.offsetX = Math.min(0, Math.max(size - width, profileCropState.offsetX));
+  profileCropState.offsetY = Math.min(0, Math.max(size - height, profileCropState.offsetY));
+}
+
+function layoutProfileCrop() {
+  const image = $('profileCropImage');
+  if (!image || !profileCropState?.img) return;
+  clampProfileCropOffset();
+  const scale = profileCropScale();
+  image.style.width = `${profileCropState.img.naturalWidth * scale}px`;
+  image.style.height = `${profileCropState.img.naturalHeight * scale}px`;
+  image.style.left = `${profileCropState.offsetX}px`;
+  image.style.top = `${profileCropState.offsetY}px`;
+}
+
+function centerProfileCrop() {
+  const viewport = $('profileCropViewport');
+  if (!viewport || !profileCropState?.img) return;
+  const size = viewport.clientWidth;
+  const scale = profileCropScale();
+  profileCropState.offsetX = (size - profileCropState.img.naturalWidth * scale) / 2;
+  profileCropState.offsetY = (size - profileCropState.img.naturalHeight * scale) / 2;
+  layoutProfileCrop();
+}
+
+function setProfileCropZoom(nextZoom, originX, originY) {
+  if (!profileCropState) return;
+  const viewport = $('profileCropViewport');
+  const zoomInput = $('profileCropZoom');
+  const size = viewport?.clientWidth || 0;
+  const cx = Number.isFinite(originX) ? originX : size / 2;
+  const cy = Number.isFinite(originY) ? originY : size / 2;
+  const oldScale = profileCropScale();
+  const imgX = (cx - profileCropState.offsetX) / oldScale;
+  const imgY = (cy - profileCropState.offsetY) / oldScale;
+  profileCropState.zoom = Math.min(4, Math.max(1, nextZoom));
+  if (zoomInput) zoomInput.value = String(profileCropState.zoom);
+  const scale = profileCropScale();
+  profileCropState.offsetX = cx - imgX * scale;
+  profileCropState.offsetY = cy - imgY * scale;
+  layoutProfileCrop();
+}
+
+async function loadOrientedImage(file) {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      canvas.getContext('2d').drawImage(bitmap, 0, 0);
+      if (typeof bitmap.close === 'function') bitmap.close();
+      return loadImageElement(canvas.toDataURL('image/jpeg', 0.95));
+    } catch (error) {
+      console.warn(error);
+    }
+  }
+  return loadImageElement(createRuntimeObjectUrl(file));
+}
+
+function closeProfileCropEditor() {
+  $('profileCropModal')?.classList.add('hidden');
+  document.body.classList.remove('profile-crop-open');
+  profileCropState = null;
+}
+
+async function confirmProfileCrop() {
+  if (!profileCropState?.img) return closeProfileCropEditor();
+  const viewport = $('profileCropViewport');
+  const size = viewport.clientWidth || 1;
+  const scale = profileCropScale();
+  const sourceSize = size / scale;
+  const output = 900;
+  const canvas = document.createElement('canvas');
+  canvas.width = output;
+  canvas.height = output;
+  const context = canvas.getContext('2d');
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(
+    profileCropState.img,
+    -profileCropState.offsetX / scale,
+    -profileCropState.offsetY / scale,
+    sourceSize,
+    sourceSize,
+    0,
+    0,
+    output,
+    output
+  );
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+  if (!blob) {
+    showToast('Não foi possível recortar a foto.');
+    return;
+  }
+  const baseName = String(profileCropState.file?.name || 'foto-perfil').replace(/\.[^.]+$/, '');
+  const cropped = new File([blob], `${baseName || 'foto-perfil'}.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
+  const input = $('childForm')?.elements?.profilePhoto;
+  pendingProfilePhotoFile = cropped;
+  pendingProfilePhotoChildId = currentChild()?.id || '';
+  assignFileToInput(input, cropped);
+  setImagePreview($('profilePreview'), createRuntimeObjectUrl(cropped), 'Foto');
+  closeProfileCropEditor();
+  showToast('Foto ajustada. Salve o cadastro para gravar.');
+}
+
+async function openProfileCropEditor(file) {
+  const modal = $('profileCropModal');
+  const image = $('profileCropImage');
+  const zoomInput = $('profileCropZoom');
+  if (!modal || !image) return;
+  try {
+    const img = await loadOrientedImage(file);
+    profileCropState = { file, img, zoom: 1, offsetX: 0, offsetY: 0, pointers: new Map(), pinch: null };
+    image.src = img.src;
+    if (zoomInput) zoomInput.value = '1';
+    modal.classList.remove('hidden');
+    document.body.classList.add('profile-crop-open');
+    requestAnimationFrame(() => centerProfileCrop());
+  } catch (error) {
+    console.warn(error);
+    showToast('Não foi possível abrir esta imagem para edição.');
+  }
+}
+
 function fillChildForm() {
   const child = currentChild();
   const form = $('childForm');
@@ -825,7 +981,15 @@ function fillChildForm() {
   if (!String(child.emergenciaNome || '').trim() && String(child.emergenciaTelefone || '').trim() && form.elements.emergenciaNome) {
     form.elements.emergenciaNome.value = child.emergenciaTelefone;
   }
-  setImagePreview($('profilePreview'), child.profilePhoto, 'Foto');
+  if (pendingProfilePhotoFile && pendingProfilePhotoChildId === child.id) {
+    setImagePreview($('profilePreview'), createRuntimeObjectUrl(pendingProfilePhotoFile), 'Foto');
+  } else {
+    if (pendingProfilePhotoChildId && pendingProfilePhotoChildId !== child.id) {
+      pendingProfilePhotoFile = null;
+      pendingProfilePhotoChildId = '';
+    }
+    setImagePreview($('profilePreview'), child.profilePhoto, 'Foto');
+  }
 }
 
 function renderHome() {
@@ -2380,7 +2544,7 @@ function buildGrowthChartView(chartType, child = currentChild()) {
   let yMin = Math.min(...allY), yMax = Math.max(...allY);
   const pad = Math.max((yMax - yMin) * 0.08, chartType === 'bmi' ? 0.8 : 1);
   yMin = Math.max(0, yMin - pad); yMax += pad;
-  const W = 760, H = 390, left = 58, top = 42, right = 46, bottom = 74;
+  const W = 980, H = 520, left = 64, top = 52, right = 52, bottom = 86;
   const plotW = W - left - right, plotH = H - top - bottom;
   const spanMonths = maxMonths - minMonths;
   const xScale = value => left + ((value - minMonths) / spanMonths) * plotW;
@@ -2391,14 +2555,17 @@ function buildGrowthChartView(chartType, child = currentChild()) {
   const yUnit = chartType === 'bmi' ? 'kg/m²' : 'cm';
   const title = config.title || 'Gráfico de crescimento';
   const subtitle = growthChartSubtitle(chartType, sex, range);
-  const curves = referenceSeries.map((series, index) => `<path d="${svgPath(series.points, xScale, yScale)}" fill="none" stroke="${curveColors[index]}" stroke-width="${series.label === 'P50' ? 2.8 : 1.6}" stroke-dasharray="${series.label === 'P50' ? '' : '5 4'}"/><text x="${W-right+5}" y="${yScale(series.points[series.points.length - 1]?.y || yMin)+4}" class="curve-label">${series.label}</text>`).join('');
+  const curves = referenceSeries.map((series, index) => `<path d="${svgPath(series.points, xScale, yScale)}" fill="none" stroke="${curveColors[index]}" stroke-width="${series.label === 'P50' ? 3.2 : 1.8}" stroke-dasharray="${series.label === 'P50' ? '' : '5 4'}"/><text x="${W-right+6}" y="${yScale(series.points[series.points.length - 1]?.y || yMin)+4}" class="curve-label">${series.label}</text>`).join('');
   const sortedItems = [...visibleItems].sort((a, b) => (a.item.date || '').localeCompare(b.item.date || ''));
   const latestId = sortedItems[sortedItems.length - 1]?.item?.id || sortedItems[sortedItems.length - 1]?.item?.date;
-  const points = visibleItems.map(point => {
+  const points = visibleItems.map((point, index) => {
     const label = percentileLabel(point.result) || 'sem percentil';
     const isLatest = (point.item.id && point.item.id === latestId) || point.item.date === latestId;
-    const radius = isLatest ? 8 : 5.5;
-    return `<g><circle cx="${xScale(point.x)}" cy="${yScale(point.y)}" r="${radius}" class="child-growth-point${isLatest ? ' latest' : ''}"><title>${formatDate(point.item.date)} — ${point.labelValue || formatLocaleNumber(point.y, 1)} — ${label}</title></circle><text x="${xScale(point.x)+8}" y="${yScale(point.y)-8}" class="point-label">${label}</text></g>`;
+    const radius = isLatest ? 9 : 6.5;
+    const lx = xScale(point.x) + 10;
+    const ly = yScale(point.y) - 12 - (index % 2 ? 18 : 0);
+    const labelWidth = Math.max(36, label.length * 8.2);
+    return `<g><circle cx="${xScale(point.x)}" cy="${yScale(point.y)}" r="${radius}" class="child-growth-point${isLatest ? ' latest' : ''}"><title>${formatDate(point.item.date)} — ${point.labelValue || formatLocaleNumber(point.y, 1)} — ${label}</title></circle><rect x="${lx - 4}" y="${ly - 13}" width="${labelWidth}" height="18" rx="6" class="point-label-bg"/><text x="${lx}" y="${ly}" class="point-label">${label}</text></g>`;
   }).join('');
   const gridY = yTicks.map(value => `<line x1="${left}" y1="${yScale(value)}" x2="${W-right}" y2="${yScale(value)}" class="chart-grid-line"/><text x="${left-8}" y="${yScale(value)+4}" text-anchor="end" class="axis-label">${formatLocaleNumber(value, chartType === 'bmi' ? 1 : 0)}</text>`).join('');
   const gridX = xTicks.map(value => `<line x1="${xScale(value)}" y1="${top}" x2="${xScale(value)}" y2="${H-bottom}" class="chart-grid-line vertical"/><text x="${xScale(value)}" y="${H-bottom+24}" text-anchor="middle" class="axis-label">${growthChartXLabel(value, range)}</text>`).join('');
@@ -2429,12 +2596,68 @@ function renderGrowthChart(chartType) {
   if (!container) return;
   const view = buildGrowthChartView(chartType);
   container.innerHTML = view.html;
+  container.classList.toggle('is-openable', !view.unavailable);
+  container.tabIndex = view.unavailable ? -1 : 0;
+  container.setAttribute('role', view.unavailable ? 'img' : 'button');
+  container.onclick = view.unavailable ? null : () => openGrowthChartViewer(chartType);
+  container.onkeydown = view.unavailable ? null : event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openGrowthChartViewer(chartType);
+    }
+  };
   if (status) status.textContent = view.statusText;
   if (source) source.textContent = view.footerText.replace(/\n/g, ' · ');
 }
 
 function renderGrowthCharts() {
   GROWTH_CHART_TYPES.forEach(chart => renderGrowthChart(chart.id));
+}
+
+function applyGrowthChartViewerScale() {
+  const image = $('growthChartViewerImage');
+  if (image) image.style.transform = `scale(${growthChartViewerScale})`;
+}
+
+function closeGrowthChartViewer() {
+  $('growthChartViewer')?.classList.add('hidden');
+  document.body.classList.remove('growth-chart-viewer-open');
+  growthChartViewerType = '';
+  growthChartViewerScale = 1;
+  applyGrowthChartViewerScale();
+}
+
+async function openGrowthChartViewer(chartType) {
+  const modal = $('growthChartViewer');
+  const image = $('growthChartViewerImage');
+  if (!modal || !image) return;
+  const view = buildGrowthChartView(chartType);
+  if (view.unavailable) return;
+  growthChartViewerType = chartType;
+  growthChartViewerScale = 1;
+  try {
+    image.src = await svgToPngDataUrl(growthChartPdfSvg(chartType, currentChild()), 2400, 1440);
+  } catch (error) {
+    console.warn(error);
+    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${view.width} ${view.height}">${view.svgInner}</svg>`)}`;
+  }
+  applyGrowthChartViewerScale();
+  modal.classList.remove('hidden');
+  document.body.classList.add('growth-chart-viewer-open');
+}
+
+async function downloadOpenGrowthChart() {
+  if (!growthChartViewerType) return;
+  try {
+    const dataUrl = $('growthChartViewerImage')?.src || await svgToPngDataUrl(growthChartPdfSvg(growthChartViewerType, currentChild()), 2400, 1440);
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = `grafico-${growthChartViewerType}.png`;
+    link.click();
+  } catch (error) {
+    console.warn(error);
+    showToast('Não foi possível baixar o gráfico.');
+  }
 }
 
 function svgPath(points, xScale, yScale) {
@@ -2448,14 +2671,15 @@ function growthChartSvgStyle() {
     .chart-bg{fill:#ffffff;stroke:#e4edf9;stroke-width:1}
     .chart-grid-line{stroke:#dfe8f5;stroke-width:1}
     .chart-grid-line.vertical{stroke-dasharray:3 5}
-    .axis-label{fill:#6b7890;font-size:11px;font-family:Inter,Arial,sans-serif}
-    .axis-title{fill:#35445e;font-size:12px;font-weight:800;font-family:Inter,Arial,sans-serif}
-    .chart-main-title{fill:#17213a;font-size:15px;font-weight:800;font-family:Inter,Arial,sans-serif}
-    .chart-subtitle{fill:#62708a;font-size:11px;font-weight:600;font-family:Inter,Arial,sans-serif}
-    .curve-label{fill:#61718d;font-size:10px;font-weight:800;font-family:Inter,Arial,sans-serif}
+    .axis-label{fill:#6b7890;font-size:13px;font-family:Inter,Arial,sans-serif}
+    .axis-title{fill:#35445e;font-size:13px;font-weight:800;font-family:Inter,Arial,sans-serif}
+    .chart-main-title{fill:#17213a;font-size:17px;font-weight:800;font-family:Inter,Arial,sans-serif}
+    .chart-subtitle{fill:#62708a;font-size:12px;font-weight:600;font-family:Inter,Arial,sans-serif}
+    .curve-label{fill:#61718d;font-size:12px;font-weight:800;font-family:Inter,Arial,sans-serif}
     .child-growth-point{fill:#ff9e2f;stroke:#ffffff;stroke-width:3;filter:drop-shadow(0 3px 5px rgba(255,158,47,.35))}
-    .child-growth-point.latest{fill:#ff7a00;stroke-width:4;r:8}
-    .point-label{fill:#b65f00;font-size:10px;font-weight:900;font-family:Inter,Arial,sans-serif}
+    .child-growth-point.latest{fill:#ff7a00;stroke-width:4;r:9}
+    .point-label-bg{fill:#ffffff;stroke:#ffe1bf;stroke-width:1}
+    .point-label{fill:#b65f00;font-size:13px;font-weight:900;font-family:Inter,Arial,sans-serif}
     .growth-footer-title{fill:#35445e;font-size:9px;font-weight:800;font-family:Inter,Arial,sans-serif}
     .growth-footer-text{fill:#6b7890;font-size:8px;font-family:Inter,Arial,sans-serif}
   </style>`;
@@ -2682,10 +2906,15 @@ function addFormListeners() {
         child.emergenciaNome = emergenciaDisplay;
       }
     }
-    const file = form.elements.profilePhoto.files[0];
+    const file = pendingProfilePhotoFile && pendingProfilePhotoChildId === child.id
+      ? pendingProfilePhotoFile
+      : form.elements.profilePhoto.files[0];
     if (file) {
       const oldId = child.profilePhoto && typeof child.profilePhoto === 'object' ? child.profilePhoto.id : '';
       child.profilePhoto = await storeLocalFile(file, oldId, { kind: 'profile-photo', childId: child.id, name: file.name || 'foto-perfil' });
+      pendingProfilePhotoFile = null;
+      pendingProfilePhotoChildId = '';
+      form.elements.profilePhoto.value = '';
     }
     saveState();
     renderAll();
@@ -2693,10 +2922,11 @@ function addFormListeners() {
   });
 
   $('childForm').elements.profilePhoto.addEventListener('change', async event => {
-    const file = event.target.files[0];
+    const input = event.currentTarget;
+    const file = input.files[0];
+    input.value = '';
     if (!file) return;
-    const previewUrl = createRuntimeObjectUrl(file);
-    setImagePreview($('profilePreview'), previewUrl, 'Foto');
+    await openProfileCropEditor(file);
   });
 
   $('medForm').addEventListener('submit', event => {
@@ -2943,6 +3173,105 @@ function addFormListeners() {
   $('closeExamAttachmentModal')?.addEventListener('click', closeExamAttachmentModal);
   $('examAttachmentModal')?.addEventListener('click', event => {
     if (event.target.id === 'examAttachmentModal') closeExamAttachmentModal();
+  });
+
+  $('profileCropCancel')?.addEventListener('click', closeProfileCropEditor);
+  $('profileCropConfirm')?.addEventListener('click', confirmProfileCrop);
+  $('profileCropZoom')?.addEventListener('input', event => {
+    setProfileCropZoom(Number(event.currentTarget.value) || 1);
+  });
+  $('profileCropModal')?.addEventListener('click', event => {
+    if (event.target.id === 'profileCropModal') closeProfileCropEditor();
+  });
+  const cropViewport = $('profileCropViewport');
+  if (cropViewport) {
+    cropViewport.addEventListener('pointerdown', event => {
+      if (!profileCropState) return;
+      cropViewport.setPointerCapture(event.pointerId);
+      profileCropState.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      profileCropState.pinch = null;
+    });
+    cropViewport.addEventListener('pointermove', event => {
+      if (!profileCropState) return;
+      const pointers = profileCropState.pointers;
+      if (!pointers.has(event.pointerId)) return;
+      const previous = pointers.get(event.pointerId);
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        const distance = Math.hypot(a.x - b.x, a.y - b.y);
+        if (!profileCropState.pinch) profileCropState.pinch = { distance, zoom: profileCropState.zoom };
+        else {
+          const rect = cropViewport.getBoundingClientRect();
+          setProfileCropZoom(
+            profileCropState.pinch.zoom * (distance / Math.max(1, profileCropState.pinch.distance)),
+            ((a.x + b.x) / 2) - rect.left,
+            ((a.y + b.y) / 2) - rect.top
+          );
+        }
+        return;
+      }
+      if (pointers.size === 1) {
+        profileCropState.offsetX += event.clientX - previous.x;
+        profileCropState.offsetY += event.clientY - previous.y;
+        layoutProfileCrop();
+      }
+    });
+    const endCropPointer = event => {
+      profileCropState?.pointers.delete(event.pointerId);
+      if (profileCropState && profileCropState.pointers.size < 2) profileCropState.pinch = null;
+    };
+    cropViewport.addEventListener('pointerup', endCropPointer);
+    cropViewport.addEventListener('pointercancel', endCropPointer);
+  }
+
+  $('closeGrowthChartViewer')?.addEventListener('click', closeGrowthChartViewer);
+  $('downloadGrowthChartBtn')?.addEventListener('click', event => {
+    event.stopPropagation();
+    downloadOpenGrowthChart();
+  });
+  $('growthChartViewer')?.addEventListener('click', event => {
+    if (event.target.id === 'growthChartViewer') closeGrowthChartViewer();
+  });
+  const chartStage = $('growthChartViewerStage');
+  if (chartStage) {
+    const chartPointers = new Map();
+    let chartPinch = null;
+    chartStage.addEventListener('wheel', event => {
+      event.preventDefault();
+      growthChartViewerScale = Math.min(3, Math.max(1, growthChartViewerScale * (event.deltaY < 0 ? 1.08 : 0.92)));
+      applyGrowthChartViewerScale();
+    }, { passive: false });
+    chartStage.addEventListener('pointerdown', event => {
+      chartStage.setPointerCapture(event.pointerId);
+      chartPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      chartPinch = null;
+    });
+    chartStage.addEventListener('pointermove', event => {
+      if (!chartPointers.has(event.pointerId)) return;
+      chartPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (chartPointers.size === 2) {
+        const [a, b] = [...chartPointers.values()];
+        const distance = Math.hypot(a.x - b.x, a.y - b.y);
+        if (!chartPinch) chartPinch = { distance, scale: growthChartViewerScale };
+        else {
+          growthChartViewerScale = Math.min(3, Math.max(1, chartPinch.scale * (distance / Math.max(1, chartPinch.distance))));
+          applyGrowthChartViewerScale();
+        }
+      }
+    });
+    const endChartPointer = event => {
+      chartPointers.delete(event.pointerId);
+      if (chartPointers.size < 2) chartPinch = null;
+    };
+    chartStage.addEventListener('pointerup', endChartPointer);
+    chartStage.addEventListener('pointercancel', endChartPointer);
+  }
+
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    if (!$('profileCropModal')?.classList.contains('hidden')) closeProfileCropEditor();
+    else if (!$('growthChartViewer')?.classList.contains('hidden')) closeGrowthChartViewer();
   });
 
   $('closeMemoryViewer')?.addEventListener('click', closeMemoryViewer);
