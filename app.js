@@ -5,30 +5,12 @@ const EXAM_STORE_NAME = 'attachments';
 const DEFAULT_CATEGORIES = ['Peso', 'Altura', 'Perímetro cefálico', 'Desenvolvimento motor', 'Categoria personalizada'];
 const THEME_STAGES = ['bebe', 'primeira-infancia', 'infancia', 'pre-adolescencia', 'adolescencia'];
 const THEME_GENDERS = ['masculino', 'feminino'];
-const THEME_STAGE_LABELS = {
-  bebe: 'Bebê',
-  'primeira-infancia': 'Primeira infância',
-  infancia: 'Infância',
-  'pre-adolescencia': 'Pré-adolescência',
-  adolescencia: 'Adolescência'
-};
-const THEME_GENDER_LABELS = { masculino: 'Masculino', feminino: 'Feminino' };
 const THEME_IMAGES = {
-  masculino: {
-    bebe: 'themes/masculino/bebe.png',
-    primeiraInfancia: 'themes/masculino/primeira-infancia.png',
-    infancia: 'themes/masculino/infancia.png',
-    preAdolescencia: 'themes/masculino/pre-adolescencia.png',
-    adolescencia: 'themes/masculino/adolescencia.png'
-  },
-  feminino: {
-    bebe: 'themes/feminino/bebe.png',
-    primeiraInfancia: 'themes/feminino/primeira-infancia.png',
-    infancia: 'themes/feminino/infancia.png',
-    preAdolescencia: 'themes/feminino/pre-adolescencia.png',
-    adolescencia: 'themes/feminino/adolescencia.png'
-  }
+  masculino: 'themes/masculino/infancia.png',
+  feminino: 'themes/feminino/infancia.png'
 };
+const RETIRED_TABS = new Set(['memorias', 'agenda']);
+const RETIRED_PDF_SECTIONS = new Set(['agenda', 'proximos', 'memoriasFavoritas', 'consultas', 'vacinas']);
 const GROWTH_PERCENTILES = [
   { label: 'P3', z: -1.880793608 },
   { label: 'P15', z: -1.036433389 },
@@ -192,98 +174,63 @@ function calculateAgeText(dateString) {
   return parts.slice(0, 3).join(', ');
 }
 
-function ageYearsFromBirth(dateString) {
-  if (!dateString) return null;
-  const birth = new Date(dateString + 'T12:00:00');
-  if (Number.isNaN(birth.getTime())) return null;
-  const now = new Date();
-  let years = now.getFullYear() - birth.getFullYear();
-  if (now.getMonth() < birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate())) years -= 1;
-  return years;
-}
-
-function themeStageByAge(dateString) {
-  const years = ageYearsFromBirth(dateString);
-  if (years == null || years < 0) return null;
-  if (years <= 2) return 'bebe';
-  if (years <= 5) return 'primeira-infancia';
-  if (years <= 9) return 'infancia';
-  if (years <= 12) return 'pre-adolescencia';
-  if (years <= 17) return 'adolescencia';
-  return 'adolescencia';
-}
-
 function themeGenderFromChild(child) {
   const sex = String(child.sexo || '').trim().toLowerCase();
   if (['m', 'male', 'masculino'].includes(sex) || sex.includes('mascul')) return 'masculino';
   if (['f', 'female', 'feminino'].includes(sex) || sex.includes('femin')) return 'feminino';
-  return null;
-}
-
-function themeStageImageKey(stage) {
-  return {
-    bebe: 'bebe',
-    'primeira-infancia': 'primeiraInfancia',
-    infancia: 'infancia',
-    'pre-adolescencia': 'preAdolescencia',
-    adolescencia: 'adolescencia'
-  }[stage] || '';
-}
-
-function themeImagePath(gender, stage) {
-  if (!THEME_GENDERS.includes(gender) || !THEME_STAGES.includes(stage)) return '';
-  return THEME_IMAGES[gender]?.[themeStageImageKey(stage)] || '';
+  return '';
 }
 
 function effectiveTheme() {
   const child = currentChild();
-  const mode = child.themeMode || 'auto';
-  if (mode === 'default') return { mode, image: '', stage: '', gender: '', reason: 'Tema padrão atual selecionado.' };
-  if (mode === 'manual') {
+  const sex = String(child.sexo || '').trim();
+  const gender = themeGenderFromChild(child);
+  if (!sex) {
     return {
-      mode,
-      stage: child.themeStage,
-      gender: child.themeGender,
-      image: themeImagePath(child.themeGender, child.themeStage),
-      reason: `Tema manual: ${THEME_STAGE_LABELS[child.themeStage]} / ${THEME_GENDER_LABELS[child.themeGender]}.`
+      gender: '',
+      image: '',
+      reason: 'Complete o sexo da criança em Cadastro para aplicar o tema infantil.'
     };
   }
-  const stage = themeStageByAge(child.nascimento);
-  const gender = themeGenderFromChild(child);
-  if (!stage) return { mode, image: '', stage: '', gender: '', reason: 'A recomendação automática depende da data de nascimento.' };
-  if (!gender) return { mode, image: '', stage, gender: '', reason: 'A recomendação automática depende do sexo cadastrado. Você pode escolher manualmente.' };
+  if (!gender) {
+    return {
+      gender: '',
+      image: '',
+      reason: 'Aparência simples. O tema infantil é aplicado quando o sexo é Feminino ou Masculino.'
+    };
+  }
   return {
-    mode,
-    stage,
     gender,
-    image: themeImagePath(gender, stage),
-    reason: `Tema automático: ${THEME_STAGE_LABELS[stage]} / ${THEME_GENDER_LABELS[gender]}.`
+    image: THEME_IMAGES[gender] || '',
+    reason: gender === 'masculino' ? 'Tema infantil masculino.' : 'Tema infantil feminino.'
   };
 }
 
 function applyTheme() {
-  const child = currentChild();
   const theme = effectiveTheme();
   const token = ++themeLoadToken;
-  document.body.dataset.theme = 'padrao';
-  document.body.dataset.themeMode = 'padrao';
-  delete document.body.dataset.themeGender;
+  const themed = Boolean(theme.image && theme.gender);
+  document.body.dataset.theme = themed ? `infantil-${theme.gender}` : 'base';
+  document.body.dataset.themeMode = themed ? 'decorativo' : 'base';
+  if (themed) document.body.dataset.themeGender = theme.gender;
+  else delete document.body.dataset.themeGender;
   delete document.body.dataset.themeStage;
   const hero = document.querySelector('.home-hero');
   if (hero) {
     hero.style.removeProperty('--theme-bg');
-    if (theme.image) {
-      const versionedImage = `${theme.image}?v=2`;
+    if (themed) {
+      const versionedImage = `${theme.image}?v=3`;
       const image = new Image();
       image.onload = () => {
         if (token !== themeLoadToken) return;
         hero.style.setProperty('--theme-bg', `url("${versionedImage}")`);
         document.body.dataset.themeMode = 'decorativo';
-        document.body.dataset.themeGender = theme.gender;
-        document.body.dataset.themeStage = theme.stage;
       };
       image.onerror = () => {
         if (token !== themeLoadToken) return;
+        document.body.dataset.theme = 'base';
+        document.body.dataset.themeMode = 'base';
+        delete document.body.dataset.themeGender;
         console.warn(`Tema não carregado: ${versionedImage}`);
       };
       image.src = versionedImage;
@@ -291,47 +238,17 @@ function applyTheme() {
   }
   const hint = $('themeHint');
   if (hint) hint.textContent = theme.reason;
-  ['themeModeSelect', 'themeModeSelectMenu'].forEach(id => { if ($(id)) $(id).value = child.themeMode || 'auto'; });
-  ['themeStageSelect', 'themeStageSelectMenu'].forEach(id => { if ($(id)) $(id).value = child.themeStage || 'bebe'; });
-  ['themeGenderSelect', 'themeGenderSelectMenu'].forEach(id => { if ($(id)) $(id).value = child.themeGender || 'masculino'; });
-  ['manualThemeControls', 'manualThemeControlsMenu'].forEach(id => { if ($(id)) $(id).classList.toggle('hidden', child.themeMode !== 'manual'); });
-  updateManualThemePreview();
-}
-
-function setThemeMode(value) {
-  const child = currentChild();
-  child.themeMode = ['auto', 'manual', 'default'].includes(value) ? value : 'auto';
-  saveState();
-  applyTheme();
-}
-
-function updateManualThemePreview(source = 'main') {
-  const suffix = source === 'menu' ? 'Menu' : '';
-  const stage = $(`themeStageSelect${suffix}`)?.value || currentChild().themeStage || 'bebe';
-  const gender = $(`themeGenderSelect${suffix}`)?.value || currentChild().themeGender || 'masculino';
-  const preview = $(`themePreview${suffix}`);
-  if (preview) {
-    const src = themeImagePath(gender, stage);
-    preview.src = src;
-    preview.onerror = () => console.warn(`Prévia de tema não carregada: ${src}`);
-  }
-}
-
-function applyManualThemeSelection(source = 'main') {
-  const child = currentChild();
-  const suffix = source === 'menu' ? 'Menu' : '';
-  const stage = $(`themeStageSelect${suffix}`)?.value || child.themeStage || 'bebe';
-  const gender = $(`themeGenderSelect${suffix}`)?.value || child.themeGender || 'masculino';
-  if (THEME_STAGES.includes(stage)) child.themeStage = stage;
-  if (THEME_GENDERS.includes(gender)) child.themeGender = gender;
-  child.themeMode = 'manual';
-  saveState();
-  applyTheme();
+  const homeNotice = $('homeThemeNotice');
+  const homeNoticeText = $('homeThemeNoticeText');
+  const sexMissing = !String(currentChild().sexo || '').trim();
+  if (homeNotice) homeNotice.hidden = !sexMissing;
+  if (homeNoticeText) homeNoticeText.textContent = sexMissing ? theme.reason : '';
 }
 
 function switchTab(tabId, opts = {}) {
+  if (RETIRED_TABS.has(tabId)) return;
   const panel = $(tabId);
-  if (!panel) return;
+  if (!panel || panel.hidden || panel.classList.contains('retired-panel')) return;
   qsa('.tab-panel').forEach(p => p.classList.remove('active'));
   panel.classList.add('active');
   qsa('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tabId));
@@ -909,8 +826,6 @@ function renderHome() {
   if (child.tipoSanguineo) badges.push(`Tipo sanguíneo: ${child.tipoSanguineo}`);
   if (child.alergias) badges.push('Alergias registradas');
   if (child.problemas) badges.push('Saúde registrada');
-  badges.push(`${child.memories.length} memórias`);
-  badges.push(`${child.events.length} eventos`);
   badges.push(`${child.milestones.length} registros`);
   $('homeBadges').innerHTML = badges.map(b => `<span class="badge">${escapeHtml(b)}</span>`).join('');
   applyTheme();
@@ -1642,26 +1557,19 @@ function getSelectedImageMemoriesForPdf() {
 
 function renderFavorites() {
   const child = currentChild();
-  const upcoming = [...child.events].filter(e => !e.date || e.date >= new Date().toISOString().slice(0,10)).sort((a,b) => (a.date || '').localeCompare(b.date || '')).slice(0,2);
-  $('favoriteUpcomingEvents').innerHTML = upcoming.length ? upcoming.map(e => `<div class="item"><strong>${escapeHtml(e.title || 'Evento')}</strong><p>${escapeHtml(e.type || 'Evento')} — ${formatDate(e.date)}</p></div>`).join('') : '<p class="muted">Nenhum próximo evento.</p>';
   const recentMilestones = [...child.milestones].sort((a,b) => (b.date || '').localeCompare(a.date || '')).slice(0,3);
-  $('favoriteRecentMilestones').innerHTML = recentMilestones.length ? recentMilestones.map(item => `<div class="item"><strong>${escapeHtml(item.title || item.category)}</strong><p>${formatDate(item.date)}${item.value ? ' — ' + escapeHtml(item.value) : ''}</p></div>`).join('') : '<p class="muted">Nenhum registro recente.</p>';
-  const favorites = child.memories.filter(m => m.favorite).sort((a,b) => (b.date || '').localeCompare(a.date || '')).slice(0,6);
-  const favWrap = $('favoriteMemories');
-  favWrap.className = 'memory-grid list-view';
-  favWrap.innerHTML = favorites.length ? favorites.map(m => {
-    const asset = firstAsset(m);
-    const media = asset ? (isImage(asset) ? `<div class="memory-media"><img src="${asset.dataUrl}" alt="${escapeHtml(m.title || 'Memória')}"></div>` : isVideo(asset) ? `<div class="memory-media"><img src="${asset.thumbnail || ''}" alt="${escapeHtml(m.title || 'Vídeo')}"><span class="play-badge">▶</span></div>` : `<div class="memory-media">${escapeHtml(getAssetIcon(asset))}</div>`) : `<div class="memory-media">Sem mídia</div>`;
-    return `<article class="memory-card"><div class="memory-media-wrap">${media}${memoryFavoriteHeartButton(m.id, true)}</div><div class="memory-content"><span class="date">${formatDate(m.date)}</span><h4>${escapeHtml(m.title || 'Memória')}</h4>${m.description ? `<p>${escapeHtml(m.description)}</p>` : ''}</div></article>`;
-  }).join('') : '<p class="muted">Nenhuma memória favorita cadastrada.</p>';
-  const totalFiles = child.memories.reduce((sum, m) => sum + memoryAssets(m).length, 0);
+  const milestonesEl = $('favoriteRecentMilestones');
+  if (milestonesEl) {
+    milestonesEl.innerHTML = recentMilestones.length ? recentMilestones.map(item => `<div class="item"><strong>${escapeHtml(item.title || item.category)}</strong><p>${formatDate(item.date)}${item.value ? ' — ' + escapeHtml(item.value) : ''}</p></div>`).join('') : '<p class="muted">Nenhum registro recente.</p>';
+  }
   const stats = [
-    ['Memórias', child.memories.length],
-    ['Fotos / vídeos', totalFiles],
-    ['Dias desde nascimento', child.nascimento ? Math.max(0, Math.floor((Date.now() - new Date(child.nascimento + 'T12:00:00').getTime()) / 86400000)) : '-'],
-    ['Eventos', child.events.length]
+    ['Evolução', child.milestones.length],
+    ['Cartas', (child.letters || []).length],
+    ['Medicações', child.medications.length],
+    ['Dias desde nascimento', child.nascimento ? Math.max(0, Math.floor((Date.now() - new Date(child.nascimento + 'T12:00:00').getTime()) / 86400000)) : '-']
   ];
-  $('favoriteStats').innerHTML = stats.map(([label, value]) => `<div class="stat-card"><strong>${value}</strong><span>${escapeHtml(String(label))}</span></div>`).join('');
+  const statsEl = $('favoriteStats');
+  if (statsEl) statsEl.innerHTML = stats.map(([label, value]) => `<div class="stat-card"><strong>${value}</strong><span>${escapeHtml(String(label))}</span></div>`).join('');
 }
 
 function renderProfileSettings() {
@@ -2717,22 +2625,13 @@ function addFormListeners() {
   $('newChildBtnPanel')?.addEventListener('click', () => $('newChildBtn').click());
   $('newChildBtnMenu')?.addEventListener('click', () => { $('newChildBtn').click(); closeSideMenu(); });
   $('openChildPdfBuilderProfile')?.addEventListener('click', () => { switchTab('inicio'); openChildPdfBuilderAndScroll(); });
-  $('openMemoriesPdfProfile')?.addEventListener('click', () => { switchTab('memorias'); $('memoryPdfBuilder').classList.remove('hidden'); renderManualMemorySelection(); });
   $('openEvolutionPdfProfile')?.addEventListener('click', () => generateEvolutionPdf());
+  $('homeThemeCadastroBtn')?.addEventListener('click', () => switchTab('cadastro'));
   $('makeQrBtnProfile')?.addEventListener('click', () => { switchTab('inicio'); generateQrCode(); });
   $('exportBackupBtnProfile')?.addEventListener('click', exportBackup);
   $('notifyBtnProfile')?.addEventListener('click', () => $('heroNotifyBtn')?.click());
-  $('drawerOpenRecordacoes')?.addEventListener('click', () => { switchTab('memorias', { closeMenu: true }); $('memoryPdfBuilder').classList.remove('hidden'); renderManualMemorySelection(); });
   $('drawerOpenQr')?.addEventListener('click', () => { switchTab('inicio', { closeMenu: true }); generateQrCode(); });
   $('drawerOpenBackup')?.addEventListener('click', () => { switchTab('inicio', { closeMenu: true }); document.querySelector('.backup-social-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
-
-  ['themeModeSelect','themeModeSelectMenu'].forEach(id => { if ($(id)) $(id).addEventListener('change', e => setThemeMode(e.target.value)); });
-  $('themeStageSelect')?.addEventListener('change', () => updateManualThemePreview('main'));
-  $('themeGenderSelect')?.addEventListener('change', () => updateManualThemePreview('main'));
-  $('applyManualThemeBtn')?.addEventListener('click', () => applyManualThemeSelection('main'));
-  $('themeStageSelectMenu')?.addEventListener('change', () => updateManualThemePreview('menu'));
-  $('themeGenderSelectMenu')?.addEventListener('change', () => updateManualThemePreview('menu'));
-  $('applyManualThemeBtnMenu')?.addEventListener('click', () => applyManualThemeSelection('menu'));
 
   $('newChildBtn').addEventListener('click', () => {
     const child = emptyChild();
@@ -3553,8 +3452,8 @@ function pdfJoinValues(values, separator = ' ') {
 }
 
 function selectedPdfSections() {
-  const selected = qsa('input[name="pdfSection"]:checked').map(input => input.value);
-  return selected.length ? selected : ['cadastro', 'fotoBio', 'saude', 'medicacoes', 'exames', 'arquivosMedicos', 'agenda', 'evolucao', 'memoriasFavoritas'];
+  const selected = qsa('input[name="pdfSection"]:checked').map(input => input.value).filter(value => !RETIRED_PDF_SECTIONS.has(value));
+  return selected.length ? selected : ['cadastro', 'fotoBio', 'saude', 'medicacoes', 'exames', 'arquivosMedicos', 'evolucao'];
 }
 
 function addCleanLine(doc, label, value, y) {
@@ -3782,8 +3681,7 @@ function generateQrCode() {
     alergias: child.alergias, problemas: child.problemas, mae: child.mae, telefoneMae: child.telefoneMae,
     pai: child.pai, telefonePai: child.telefonePai, emergencia: `${child.emergenciaNome || ''} ${child.emergenciaTelefone || ''}`.trim(),
     pediatra: `${child.pediatraNome || ''} ${child.pediatraTelefone || ''}`.trim(),
-    medicacoes: child.medications.map(m => `${m.nome} - ${m.dose || ''} - ${m.frequencia || ''}`).slice(0, 8),
-    proximosEventos: child.events.filter(e => !e.date || e.date >= new Date().toISOString().slice(0,10)).slice(0, 8).map(e => `${formatDate(e.date)} - ${e.type}: ${e.title}`)
+    medicacoes: child.medications.map(m => `${m.nome} - ${m.dose || ''} - ${m.frequencia || ''}`).slice(0, 8)
   };
   const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(compact))));
   const link = `${location.origin}${location.pathname}#resumo=${encoded}`;

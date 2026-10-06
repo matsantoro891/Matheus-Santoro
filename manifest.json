@@ -1,7 +1,7 @@
 {
   "name": "cReScer juntos",
   "short_name": "cReScer",
-  "description": "Saúde, memórias, agenda e evolução da criança em um só lugar.",
+  "description": "Saúde, evolução e desenvolvimento da criança em um só lugar.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
