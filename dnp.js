@@ -1233,39 +1233,86 @@ async function generateDnpDoctorPdf(child = dnpChild(), { download = true } = {}
   const ink = { r: 23, g: 33, b: 58 };
   const muted = { r: 98, g: 112, b: 138 };
   const line = { r: 220, g: 231, b: 248 };
+  const FONT_SCALE = 1.05;
+  const fs = (pt) => +(pt * FONT_SCALE).toFixed(2);
+  const lh = (pt) => +(fs(pt) * 0.5).toFixed(2);
   const margin = 15;
   const pageW = 210;
   const pageH = 297;
-  const bottom = pageH - 15;
+  const bottom = pageH - 20;
   const contentW = pageW - margin * 2;
+  const gap = 5;
+  const pad = 5.5;
   const state = { y: margin, pages: 1 };
 
   const setInk = (color = ink) => doc.setTextColor(color.r, color.g, color.b);
   const fill = (color) => doc.setFillColor(color.r, color.g, color.b);
   const stroke = (color) => doc.setDrawColor(color.r, color.g, color.b);
+  const wrap = (text, width, size, style = 'normal') => {
+    doc.setFont('helvetica', style);
+    doc.setFontSize(size);
+    return dnpPdfLines(doc, text, width);
+  };
+  const writeLines = (lines, x, y, size, style, color, spacing) => {
+    doc.setFont('helvetica', style);
+    doc.setFontSize(size);
+    setInk(color);
+    lines.forEach((lineText, lineIndex) => dnpPdfWrite(doc, lineText, x, y + lineIndex * spacing));
+    return y + lines.length * spacing;
+  };
 
   const ensure = (need) => {
-    if (state.y + need <= bottom) return;
+    if (state.y + need <= bottom) return false;
     doc.addPage();
     state.pages += 1;
     state.y = dnpPdfContinuationHeader(doc, summary, accent, ink, muted, margin);
+    return true;
   };
 
   const sectionTitle = (title) => {
-    state.y += 5;
-    ensure(14);
+    state.y += 6;
+    ensure(16);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
+    doc.setFontSize(fs(12));
     setInk(ink);
     dnpPdfWrite(doc, title, margin, state.y);
-    state.y += 2;
+    state.y += 3;
     stroke(line);
     doc.setLineWidth(0.35);
     doc.line(margin, state.y, pageW - margin, state.y);
-    state.y += 6;
+    state.y += 7;
   };
 
-  const logoSize = 16.48;
+  const infoLine = (label, value) => {
+    const text = String(value || '');
+    if (!text) return;
+    const labelSize = fs(9.5);
+    const labelText = `${label}:`;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(labelSize);
+    const labelW = doc.getTextWidth(labelText);
+    const stacked = labelW > 52;
+    const valueSize = fs(9.5);
+    const valueLh = lh(9.5) + 0.6;
+    const valueWidth = stacked ? contentW : Math.max(40, contentW - labelW - 4);
+    const valueLines = wrap(text, valueWidth, valueSize);
+    const need = stacked ? valueLh + valueLines.length * valueLh + 1.5 : Math.max(valueLh + 1.2, valueLines.length * valueLh + 1.2);
+    ensure(need);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(labelSize);
+    setInk(ink);
+    dnpPdfWrite(doc, labelText, margin, state.y);
+    if (stacked) {
+      state.y += valueLh;
+      writeLines(valueLines, margin, state.y, valueSize, 'normal', ink, valueLh);
+      state.y += valueLines.length * valueLh + 1.5;
+    } else {
+      writeLines(valueLines, margin + labelW + 3.5, state.y, valueSize, 'normal', ink, valueLh);
+      state.y += need;
+    }
+  };
+
+  const logoSize = 16.48 * FONT_SCALE;
   let logo = '';
   try {
     logo = typeof getAppLogoDataUrl === 'function' ? await getAppLogoDataUrl() : '';
@@ -1275,10 +1322,8 @@ async function generateDnpDoctorPdf(child = dnpChild(), { download = true } = {}
   if (typeof addPdfIdentityHeader === 'function') {
     state.y = addPdfIdentityHeader(doc, child, logo, 'Desenvolvimento Neuropsicomotor');
     state.y = addPdfChildCoreData(doc, child, state.y);
-    if (typeof addCleanLine === 'function') {
-      state.y = addCleanLine(doc, 'Prematuridade / necessidade especial', summary.special, state.y);
-      state.y = addCleanLine(doc, 'Etapa de referência atual', summary.reference, state.y);
-    }
+    infoLine('Prematuridade / necessidade especial', summary.special);
+    infoLine('Etapa de referência atual', summary.reference);
     if (typeof addPdfPhotoAndMiniBio === 'function') {
       state.y = addPdfPhotoAndMiniBio(doc, child, state.y);
     }
@@ -1286,195 +1331,246 @@ async function generateDnpDoctorPdf(child = dnpChild(), { download = true } = {}
     if (logo && typeof addImageSafe === 'function') {
       addImageSafe(doc, logo, (pageW - logoSize) / 2, state.y, logoSize, logoSize);
     }
-    state.y += 16.8;
+    state.y += 17.6;
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12.36);
+    doc.setFontSize(fs(12.36));
     setInk(ink);
     dnpPdfWrite(doc, 'cReScer juntos', pageW / 2, state.y, { align: 'center' });
-    state.y += 12;
-    doc.setFontSize(16);
+    state.y += 13;
+    doc.setFontSize(fs(16));
     dnpPdfWrite(doc, 'Desenvolvimento Neuropsicomotor', pageW / 2, state.y, { align: 'center' });
-    state.y += 8;
+    state.y += 9;
   }
+
+  const bodySize = fs(8);
+  const bodyLh = lh(8) + 0.15;
+  const statusSize = fs(7.5);
+  const statusLh = lh(7.5) + 0.2;
+  const titleSize = fs(10.5);
+  const innerW = (width) => Math.max(24, width - pad * 2 - 6);
+
+  const measureItem = (item, width) => {
+    const textLines = wrap(item.text, width, bodySize);
+    const statusLines = wrap(item.status, width, statusSize, 'bold');
+    const noteLines = item.note ? wrap(`Observação: ${item.note}`, width, statusSize, 'italic') : [];
+        return {
+      textLines,
+      statusLines,
+      noteLines,
+      height: textLines.length * bodyLh + 1.4 + statusLines.length * statusLh + (noteLines.length ? noteLines.length * statusLh + 1 : 0) + 3.2
+    };
+  };
+
+  const measureStage = (stage, width) => {
+    const labelLines = wrap(stage.label, innerW(width), titleSize, 'bold');
+    let h = pad + 3 + labelLines.length * (lh(10.5) + 0.4) + 2;
+    const items = stage.items.map(item => measureItem(item, innerW(width)));
+    items.forEach(item => { h += item.height; });
+    return { labelLines, items, height: h + pad };
+  };
+
+  const drawItem = (item, x, y, width, measured) => {
+    const color = dnpPdfStatusColor(item.positive, accent);
+    fill(item.positive ? accent : ink);
+    doc.circle(x + 2.2, y + 1.1, 1.05, 'F');
+    y = writeLines(measured.textLines, x + 6, y + 1.2, bodySize, 'normal', ink, bodyLh);
+    y += 1.4;
+    y = writeLines(measured.statusLines, x + 6, y, statusSize, 'bold', color, statusLh);
+    if (measured.noteLines.length) {
+      y += 1;
+      y = writeLines(measured.noteLines, x + 6, y, statusSize, 'italic', muted, statusLh);
+    }
+    return y + 2.2;
+  };
+
+  const drawStageCard = (stage, x, y, width, measured) => {
+    fill({ r: 248, g: 250, b: 253 });
+    stroke(line);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(x, y, width, measured.height, 2.5, 2.5, 'FD');
+    let cursor = y + pad + 2;
+    cursor = writeLines(measured.labelLines, x + pad, cursor, titleSize, 'bold', ink, lh(10.5) + 0.4);
+    cursor += 2;
+    measured.items.forEach((itemMeasure, index) => {
+      cursor = drawItem(stage.items[index], x + pad, cursor, innerW(width), itemMeasure);
+    });
+  };
+
+  const flowStage = (stage, width) => {
+    const labelLines = wrap(stage.label, innerW(width), titleSize, 'bold');
+    const headerH = pad + 3 + labelLines.length * (lh(10.5) + 0.4) + 2;
+    ensure(headerH + 16);
+    const startY = state.y;
+    fill({ r: 248, g: 250, b: 253 });
+    stroke(line);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(margin, startY, width, headerH + 4, 2.5, 2.5, 'FD');
+    writeLines(labelLines, margin + pad, startY + pad + 2, titleSize, 'bold', ink, lh(10.5) + 0.4);
+    state.y = startY + headerH;
+    stage.items.forEach(item => {
+      const measured = measureItem(item, innerW(width));
+      ensure(measured.height + 2);
+      state.y = drawItem(item, margin + pad, state.y, innerW(width), measured);
+    });
+    state.y += pad + 2;
+  };
 
   sectionTitle('Etapas preenchidas e marcos');
   if (!summary.stages.length) {
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9.5);
+    doc.setFontSize(fs(9.5));
     setInk(ink);
     dnpPdfWrite(doc, dnpPdfEmptyLabel(), margin, state.y);
-    state.y += 8;
+    state.y += 9;
   } else {
     const cols = Math.min(3, summary.stages.length);
-    const gap = 4;
     const colW = (contentW - gap * (cols - 1)) / cols;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
+    const pageBody = bottom - 28;
     for (let i = 0; i < summary.stages.length; i += cols) {
       const row = summary.stages.slice(i, i + cols);
-      const heights = row.map(stage => {
-        let h = 8;
-        stage.items.forEach(item => {
-          const textLines = dnpPdfLines(doc, item.text, colW - 22);
-          h += Math.max(5.2, textLines.length * 3.2) + (item.note ? dnpPdfLines(doc, `Observação: ${item.note}`, colW - 10).length * 3.1 + 0.6 : 0) + 0.8;
-        });
-        return h + 3;
-      });
-      const rowH = Math.max(...heights);
-      ensure(rowH + 2);
+      const measured = row.map(stage => measureStage(stage, colW));
+      const rowH = Math.max(...measured.map(item => item.height));
+      if (rowH > pageBody) {
+        row.forEach(stage => flowStage(stage, contentW));
+        continue;
+      }
+      ensure(rowH + 3);
       row.forEach((stage, index) => {
-        const x = margin + index * (colW + gap);
-        let y = state.y;
-        fill({ r: 248, g: 250, b: 253 });
-        stroke(line);
-        doc.setLineWidth(0.2);
-        doc.roundedRect(x, y, colW, rowH, 2.5, 2.5, 'FD');
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10.5);
-        setInk(ink);
-        dnpPdfWrite(doc, stage.label, x + 4, y + 6);
-        y += 9;
-        stage.items.forEach(item => {
-          const color = dnpPdfStatusColor(item.positive, accent);
-          fill(item.positive ? accent : ink);
-          doc.circle(x + 6, y + 1, 1.05, 'F');
-          const textW = colW - 28;
-          const textLines = dnpPdfLines(doc, item.text, textW);
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(8);
-          setInk(ink);
-          textLines.forEach((lineText, lineIndex) => dnpPdfWrite(doc, lineText, x + 9, y + 1.2 + lineIndex * 3.4));
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(7.5);
-          setInk(color);
-          dnpPdfWrite(doc, item.status, x + colW - 4, y + 1.2, { align: 'right' });
-          y += Math.max(5.5, textLines.length * 3.4) + 0.6;
-          if (item.note) {
-            const noteLines = dnpPdfLines(doc, `Observação: ${item.note}`, colW - 10);
-            doc.setFont('helvetica', 'italic');
-            doc.setFontSize(7.5);
-            setInk(muted);
-            noteLines.forEach((lineText, lineIndex) => dnpPdfWrite(doc, lineText, x + 9, y + lineIndex * 3.3));
-            y += noteLines.length * 3.3 + 1;
-          }
-        });
+        drawStageCard(stage, margin + index * (colW + gap), state.y, colW, measured[index]);
       });
-      state.y += rowH + 4;
+      state.y += rowH + 5;
     }
   }
 
   sectionTitle('Para conversar com o médico');
   const qCols = 2;
-  const qGap = 4;
-  const qW = (contentW - qGap) / 2;
+  const qW = (contentW - gap) / 2;
+  const qSize = fs(8);
+  const aSize = fs(8.5);
+  const qLh = lh(8) + 0.2;
+  const aLh = lh(8.5) + 0.25;
   for (let i = 0; i < summary.questions.length; i += qCols) {
     const pair = summary.questions.slice(i, i + qCols);
-    const heights = pair.map(item => {
-      const qLines = dnpPdfLines(doc, item.question, qW - 8);
-      const aLines = dnpPdfLines(doc, item.answer, qW - 8);
-      return 6 + qLines.length * 3.4 + aLines.length * 3.6;
+    const boxes = pair.map(item => {
+      const qLines = wrap(item.question, qW - pad * 2, qSize, 'bold');
+      const aLines = wrap(item.answer, qW - pad * 2, aSize);
+      return { item, qLines, aLines, height: pad + 2 + qLines.length * qLh + 2 + aLines.length * aLh + pad };
     });
-    const boxH = Math.max(...heights);
-    ensure(boxH + 3);
-    pair.forEach((item, index) => {
-      const x = margin + index * (qW + qGap);
+    const boxH = Math.max(...boxes.map(item => item.height));
+    if (boxH > bottom - 28) {
+      boxes.forEach(box => {
+        ensure(box.height + 2);
+        fill({ r: 248, g: 250, b: 253 });
+        stroke(line);
+        doc.roundedRect(margin, state.y, contentW, box.height, 2.5, 2.5, 'FD');
+        let y = writeLines(wrap(box.item.question, contentW - pad * 2, qSize, 'bold'), margin + pad, state.y + pad + 2, qSize, 'bold', ink, qLh);
+        y += 2;
+        writeLines(wrap(box.item.answer, contentW - pad * 2, aSize), margin + pad, y, aSize, 'normal', ink, aLh);
+        state.y += box.height + 4;
+      });
+      continue;
+    }
+    ensure(boxH + 4);
+    boxes.forEach((box, index) => {
+      const x = margin + index * (qW + gap);
       fill({ r: 248, g: 250, b: 253 });
       stroke(line);
       doc.roundedRect(x, state.y, qW, boxH, 2.5, 2.5, 'FD');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      setInk(ink);
-      const qLines = dnpPdfLines(doc, item.question, qW - 8);
-      qLines.forEach((lineText, lineIndex) => dnpPdfWrite(doc, lineText, x + 4, state.y + 5 + lineIndex * 3.4));
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      setInk(ink);
-      const aLines = dnpPdfLines(doc, item.answer, qW - 8);
-      aLines.forEach((lineText, lineIndex) => dnpPdfWrite(doc, lineText, x + 4, state.y + 6 + qLines.length * 3.4 + lineIndex * 3.6));
+      let y = writeLines(box.qLines, x + pad, state.y + pad + 2, qSize, 'bold', ink, qLh);
+      y += 2;
+      writeLines(box.aLines, x + pad, y, aSize, 'normal', ink, aLh);
     });
-    state.y += boxH + 3;
+    state.y += boxH + 4;
   }
 
   sectionTitle(summary.activityTitle);
   if (!summary.activities.length) {
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9.5);
+    doc.setFontSize(fs(9.5));
     setInk(ink);
     dnpPdfWrite(doc, dnpPdfEmptyLabel(), margin, state.y);
-    state.y += 8;
+    state.y += 9;
   } else {
     summary.activities.forEach(item => {
-      const doubtLines = item.doubt ? dnpPdfLines(doc, `Dúvida: ${item.doubt}`, contentW - 8) : [];
-      const h = 8 + doubtLines.length * 3.4;
+      const actTitleSize = fs(9);
+      const actStatusSize = fs(8);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(actStatusSize);
+      const statusW = Math.min(48, doc.getTextWidth(item.status) + 2);
+      const titleW = Math.max(40, contentW - statusW - 12);
+      const titleLines = wrap(item.title, titleW, actTitleSize);
+      const doubtLines = item.doubt ? wrap(`Dúvida: ${item.doubt}`, contentW - 10, fs(8), 'italic') : [];
+      const h = Math.max(lh(9) + 2, titleLines.length * (lh(9) + 0.2)) + (doubtLines.length ? doubtLines.length * (lh(8) + 0.2) + 1.2 : 0) + 3;
       ensure(h);
       fill(item.positive ? accent : ink);
-      doc.circle(margin + 2, state.y - 1, 1.05, 'F');
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      setInk(ink);
-      dnpPdfWrite(doc, item.title, margin + 6, state.y);
+      doc.circle(margin + 2, state.y + 1, 1.05, 'F');
+      writeLines(titleLines, margin + 7, state.y + 1.2, actTitleSize, 'normal', ink, lh(9) + 0.2);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
+      doc.setFontSize(actStatusSize);
       setInk(dnpPdfStatusColor(item.positive, accent));
-      dnpPdfWrite(doc, item.status, pageW - margin, state.y, { align: 'right' });
-      state.y += 5;
-      if (item.doubt) {
-        doc.setFont('helvetica', 'italic');
-        doc.setFontSize(8);
-        setInk(ink);
-        doubtLines.forEach(lineText => {
-          dnpPdfWrite(doc, lineText, margin + 6, state.y);
-          state.y += 3.4;
-        });
+      dnpPdfWrite(doc, item.status, pageW - margin, state.y + 1.2, { align: 'right' });
+      state.y += Math.max(lh(9) + 2, titleLines.length * (lh(9) + 0.2)) + 1;
+      if (doubtLines.length) {
+        writeLines(doubtLines, margin + 7, state.y, fs(8), 'italic', ink, lh(8) + 0.2);
+        state.y += doubtLines.length * (lh(8) + 0.2) + 1.2;
       }
-      state.y += 1.5;
+      state.y += 2;
     });
   }
 
   sectionTitle('Registros da família');
-  const fGap = 4;
-  const fW = (contentW - fGap * 2) / 3;
-  const familyHeights = summary.family.map(item => {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
+  const fW = (contentW - gap * 2) / 3;
+  const familySize = fs(8);
+  const familyLh = lh(8) + 0.15;
+  const familyBoxes = summary.family.map(item => {
     const texts = item.texts.length ? item.texts : [dnpPdfEmptyLabel()];
-    return 8 + texts.reduce((sum, text) => sum + dnpPdfLines(doc, text, fW - 8).length * 3.2, 0);
+    const labelLines = wrap(item.label, fW - pad * 2 - 6, familySize, 'bold');
+    const textBlocks = texts.map(text => wrap(text, fW - pad * 2, familySize));
+    const height = pad + 2 + labelLines.length * familyLh + 2 + textBlocks.reduce((sum, lines) => sum + lines.length * familyLh + 1.2, 0) + pad;
+    return { item, labelLines, textBlocks, height };
   });
-  const familyH = Math.max(...familyHeights);
-  ensure(familyH + 2);
-  summary.family.forEach((item, index) => {
-    const x = margin + index * (fW + fGap);
-    fill({ r: 248, g: 250, b: 253 });
-    stroke(line);
-    doc.roundedRect(x, state.y, fW, familyH, 2.5, 2.5, 'FD');
-    fill(accent);
-    doc.circle(x + 5, state.y + 5, 1.05, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    setInk(ink);
-    dnpPdfWrite(doc, item.label, x + 8, state.y + 6);
-    const texts = item.texts.length ? item.texts : [dnpPdfEmptyLabel()];
-    let y = state.y + 11;
-    texts.forEach(text => {
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      setInk(ink);
-      dnpPdfLines(doc, text, fW - 8).forEach(lineText => {
-        dnpPdfWrite(doc, lineText, x + 4, y);
-        y += 3.4;
+  const familyH = Math.max(...familyBoxes.map(item => item.height));
+  if (familyH > bottom - 28) {
+    familyBoxes.forEach(box => {
+      ensure(box.height + 2);
+      fill({ r: 248, g: 250, b: 253 });
+      stroke(line);
+      doc.roundedRect(margin, state.y, contentW, box.height, 2.5, 2.5, 'FD');
+      fill(accent);
+      doc.circle(margin + 5, state.y + pad + 1, 1.05, 'F');
+      let y = writeLines(wrap(box.item.label, contentW - pad * 2 - 8, familySize, 'bold'), margin + 8, state.y + pad + 2, familySize, 'bold', ink, familyLh);
+      y += 2;
+      box.item.texts.forEach(text => {
+        const lines = wrap(text, contentW - pad * 2, familySize);
+        y = writeLines(lines, margin + pad, y, familySize, 'normal', ink, familyLh) + 1.2;
       });
-      y += 1;
+      state.y += box.height + 4;
     });
-  });
-  state.y += familyH + 6;
+  } else {
+    ensure(familyH + 3);
+    familyBoxes.forEach((box, index) => {
+      const x = margin + index * (fW + gap);
+      fill({ r: 248, g: 250, b: 253 });
+      stroke(line);
+      doc.roundedRect(x, state.y, fW, familyH, 2.5, 2.5, 'FD');
+      fill(accent);
+      doc.circle(x + 5, state.y + pad + 1, 1.05, 'F');
+      let y = writeLines(box.labelLines, x + 8, state.y + pad + 2, familySize, 'bold', ink, familyLh);
+      y += 2;
+      box.textBlocks.forEach(lines => {
+        y = writeLines(lines, x + pad, y, familySize, 'normal', ink, familyLh) + 1.2;
+      });
+    });
+    state.y += familyH + 6;
+  }
 
   const pages = doc.internal.getNumberOfPages();
   for (let page = 1; page <= pages; page += 1) {
     doc.setPage(page);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
+    doc.setFontSize(fs(8));
     setInk(muted);
-    dnpPdfWrite(doc, `${page}`, pageW / 2, pageH - 8, { align: 'center' });
+    dnpPdfWrite(doc, `${page}`, pageW / 2, pageH - 9, { align: 'center' });
   }
 
   if (download) doc.save(`resumo-dnp-${safeFileName(summary.name)}.pdf`);
@@ -1483,18 +1579,19 @@ async function generateDnpDoctorPdf(child = dnpChild(), { download = true } = {}
 
 function dnpPdfContinuationHeader(doc, summary, accent, ink, muted, margin) {
   const logoY = 10;
+  const fs = (pt) => +(pt * 1.05).toFixed(2);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
+  doc.setFontSize(fs(9));
   doc.setTextColor(ink.r, ink.g, ink.b);
   dnpPdfWrite(doc, 'cReScer juntos', margin, logoY + 4);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
+  doc.setFontSize(fs(8));
   doc.setTextColor(muted.r, muted.g, muted.b);
-  dnpPdfWrite(doc, `${summary.name} · Desenvolvimento Neuropsicomotor`, margin, logoY + 9);
+  dnpPdfWrite(doc, `${summary.name} · Desenvolvimento Neuropsicomotor`, margin, logoY + 10);
   doc.setDrawColor(220, 231, 248);
   doc.setLineWidth(0.3);
-  doc.line(margin, logoY + 12, 195, logoY + 12);
-  return 24;
+  doc.line(margin, logoY + 14, 195, logoY + 14);
+  return 28;
 }
 
 if (typeof window !== 'undefined') {
