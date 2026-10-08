@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Resumo da criança - cReScer juntos</title>
+  <title>Resumo da criança - MEVIA</title>
   <meta name="theme-color" content="#448ef7" />
-  <link rel="icon" href="icons/favicon.png" />
+  <link rel="icon" href="icons/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" href="icons/favicon.png" />
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     :root{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#152033;background:#f7faff}.wrap{width:min(900px,calc(100% - 28px));margin:28px auto}.card{background:#fff;border:1px solid #d8e2f0;border-radius:24px;padding:24px;box-shadow:0 16px 40px rgba(23,54,96,.10)}.brand{display:flex;gap:14px;align-items:center;margin-bottom:16px}.brand img{width:56px;height:56px;border-radius:16px}h1{margin:0}h2{margin-top:26px;border-bottom:1px solid #d8e2f0;padding-bottom:8px}p{line-height:1.5}.muted{color:#667085}.actions{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}.primary,.secondary{border:0;border-radius:14px;padding:12px 16px;font-weight:700;cursor:pointer}.primary{background:#448ef7;color:white}.secondary{background:#eaf3ff;color:#1f5fb8}.item{border:1px solid #d8e2f0;border-radius:16px;padding:12px;margin:10px 0;background:#fbfdff}dt{font-weight:700}dd{margin:0 0 10px;color:#39465a}@media print{.actions{display:none}.wrap{width:100%;margin:0}.card{box-shadow:none;border:0}}
@@ -14,7 +15,7 @@
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="brand"><img src="icons/icon-192.png" alt=""><div><h1>cReScer juntos</h1><p class="muted">Resumo compartilhável da criança</p></div></div>
+      <div class="brand"><img src="icons/icon-192.png" alt=""><div><h1>MEVIA</h1><p class="muted">Resumo compartilhável da criança</p></div></div>
       <div class="actions"><button class="primary" id="pdfBtn">Baixar PDF</button><button class="secondary" onclick="window.print()">Imprimir / salvar como PDF</button></div>
       <div id="content"></div>
     </div>
@@ -58,7 +59,7 @@ function renderEvents(items){if(!items.length)return'<p>Nenhum evento cadastrado
 function reportLinesFromPayload(p){
  const c=p.cadastro||{}, lines=[];
  const add=(l,v,prefix='')=>{if(v)lines.push(`${prefix}${l}: ${v}`)};
- lines.push('cReScer juntos - Resumo da criança');lines.push(`Gerado em: ${new Date(p.generatedAt||Date.now()).toLocaleString('pt-BR')}`);lines.push('');lines.push('CADASTRO');
+ lines.push('MEVIA - Resumo da criança');lines.push(`Gerado em: ${new Date(p.generatedAt||Date.now()).toLocaleString('pt-BR')}`);lines.push('');lines.push('CADASTRO');
  add('Nome',c.nome);add('Data de nascimento',fmtDate(c.nascimento));add('Sexo',c.sexo);add('Tipo sanguíneo',c.tipoSanguineo);add('Problemas de saúde',c.problemas);add('Alergias',c.alergias);add('Mãe',[c.mae,c.telefoneMae].filter(Boolean).join(' • '));add('Pai',[c.pai,c.telefonePai].filter(Boolean).join(' • '));add('Emergência',[c.emergenciaNome,c.emergenciaTelefone].filter(Boolean).join(' • '));add('Pediatra',[c.pediatraNome,c.pediatraTelefone,c.pediatraEmail,c.clinicaPediatra].filter(Boolean).join(' • '));add('Observações',c.observacoes);
  lines.push('');lines.push('SAÚDE - MEDICAÇÕES');if(!(p.medications||[]).length)lines.push('Nenhuma medicação cadastrada.');(p.medications||[]).forEach((m,i)=>{lines.push(`${i+1}. ${m.nome||'Medicamento'}`);add('Dose',m.dose,'   ');add('Frequência',m.frequencia,'   ');add('Horário',m.horario,'   ');add('Período',`${fmtDate(m.inicio)||'não informado'} até ${fmtDate(m.termino)||'não informado'}`,'   ');add('Observações',m.observacoes,'   ')});
  lines.push('');lines.push('SAÚDE - EXAMES');if(!(p.exams||[]).length)lines.push('Nenhum exame cadastrado.');(p.exams||[]).forEach((e,i)=>{lines.push(`${i+1}. ${e.nome||'Exame'} - ${fmtDate(e.data)||'sem data'}`);add('Descrição',e.descricao,'   ');add('Arquivo',e.arquivo,'   ')});
@@ -70,7 +71,7 @@ function createPdf(p){
  const {jsPDF}=window.jspdf, doc=new jsPDF({unit:'pt',format:'a4'}), lines=reportLinesFromPayload(p), margin=44, width=doc.internal.pageSize.getWidth()-margin*2, pageH=doc.internal.pageSize.getHeight();let y=48;
  lines.forEach((line,idx)=>{const head=['CADASTRO','SAÚDE - MEDICAÇÕES','SAÚDE - EXAMES','CALENDÁRIO'].includes(line)||idx===0;doc.setFont('helvetica',head?'bold':'normal');doc.setFontSize(idx===0?16:(head?12:10));doc.splitTextToSize(line||' ',width).forEach(part=>{if(y>pageH-48){doc.addPage();y=48}doc.text(part,margin,y);y+=idx===0?20:14});if(head)y+=5});
  const name=(p.cadastro?.nome||'crianca').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9._-]+/g,'-').toLowerCase();
- doc.save(`crescer-juntos-${name}.pdf`);
+ doc.save(`mevia-${name}.pdf`);
 }
 </script>
 </body>

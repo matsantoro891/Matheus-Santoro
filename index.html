@@ -2,31 +2,30 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>cReScer juntos</title>
-  <meta name="theme-color" content="#4d8df7" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+  <title>MEVIA</title>
+  <meta name="theme-color" content="#f7f4ef" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="cReScer" />
+  <meta name="apple-mobile-web-app-title" content="MEVIA" />
+  <meta name="description" content="Saúde, evolução e desenvolvimento da criança em um só lugar." />
   <link rel="manifest" href="manifest.json" />
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-  <link rel="icon" href="icons/favicon.png" />
-  <link rel="stylesheet" href="styles.css?v=60" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=5" />
+  <link rel="icon" href="icons/favicon.ico?v=5" sizes="any" />
+  <link rel="icon" type="image/png" href="icons/favicon.png?v=5" />
+  <link rel="stylesheet" href="styles.css?v=64" />
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script defer src="growth-reference.js"></script>
   <script defer src="growth-reference-ext.js"></script>
   <script defer src="dnp-catalog.js?v=38"></script>
-  <script defer src="dnp.js?v=52"></script>
-  <script defer src="app.js?v=49"></script>
+  <script defer src="dnp.js?v=53"></script>
+  <script defer src="app.js?v=50"></script>
 </head>
 <body>
   <header class="app-header">
     <div class="brand">
-      <img class="brand-logo" src="./icons/logo-main.png" alt="" aria-hidden="true" onerror="this.hidden=true" />
-      <div>
-        <h1>cReScer juntos</h1>
-      </div>
+      <img class="brand-logo" src="./assets/mevia-logo-transparente.png" alt="MEVIA" />
     </div>
     <div class="child-switcher">
       <label for="childSelect">Criança ativa</label>
@@ -37,6 +36,7 @@
 
   <main class="layout">
     <section id="inicio" class="tab-panel active">
+      <div class="mevia-scene-bg" aria-hidden="true"></div>
       <div class="social-home">
         <div class="home-scene">
         <div class="home-hero cardless">
@@ -45,8 +45,7 @@
             <button type="button" id="heroNotifyBtn" class="hero-circle-btn" aria-label="Notificações">🔔</button>
           </div>
           <div class="hero-branding">
-            <img src="./icons/logo-main.png" alt="" aria-hidden="true" class="hero-logo" onerror="this.hidden=true" />
-            <p class="hero-wordmark">cReScer juntos</p>
+            <img src="./assets/mevia-logo-transparente.png" alt="MEVIA" class="hero-logo" />
           </div>
         </div>
 
@@ -70,11 +69,11 @@
         </div>
 
         <div class="home-shortcuts-grid">
-          <button type="button" class="home-nav-card" data-tab-target="cadastro"><span class="home-nav-icon">👶</span><span>Cadastro</span></button>
-          <button type="button" class="home-nav-card" data-tab-target="saude"><span class="home-nav-icon">💙</span><span>Saúde</span></button>
-          <button type="button" class="home-nav-card full-width" data-tab-target="evolucao"><span class="home-nav-icon">📈</span><span>Desenvolvimento físico</span></button>
-          <button type="button" class="home-nav-card full-width" data-tab-target="dnp"><span class="home-nav-icon">🧠</span><span>Desenvolvimento Neuropsicomotor</span></button>
-          <button type="button" class="home-nav-card full-width" data-tab-target="cartas"><span class="home-nav-icon">💌</span><span>Cartas para meu Filho</span></button>
+          <button type="button" class="home-nav-card" data-tab-target="cadastro"><span class="home-nav-icon" aria-hidden="true">👶</span><span class="home-nav-label">Cadastro</span><span class="home-nav-chevron" aria-hidden="true">›</span></button>
+          <button type="button" class="home-nav-card" data-tab-target="saude"><span class="home-nav-icon home-nav-icon-heart" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" focusable="false"><path fill="currentColor" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></span><span class="home-nav-label">Saúde</span><span class="home-nav-chevron" aria-hidden="true">›</span></button>
+          <button type="button" class="home-nav-card full-width" data-tab-target="evolucao"><span class="home-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" focusable="false"><path d="M4 19.2h16" stroke="#c5cfc6" stroke-width="1.6" stroke-linecap="round"/><path d="M4 19.2V5" stroke="#c5cfc6" stroke-width="1.6" stroke-linecap="round"/><path d="M6.2 15.2l3.6-3.5 3 2.2 5.2-6.2" fill="none" stroke="#e15d5d" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="home-nav-label">Desenvolvimento físico</span><span class="home-nav-chevron" aria-hidden="true">›</span></button>
+          <button type="button" class="home-nav-card full-width" data-tab-target="dnp"><span class="home-nav-icon" aria-hidden="true">🧠</span><span class="home-nav-label">Desenvolvimento Neuropsicomotor</span><span class="home-nav-chevron" aria-hidden="true">›</span></button>
+          <button type="button" class="home-nav-card full-width" data-tab-target="cartas"><span class="home-nav-icon" aria-hidden="true">💌</span><span class="home-nav-label">Cartas para meu Filho</span><span class="home-nav-chevron" aria-hidden="true">›</span></button>
         </div>
         </div>
 
@@ -455,7 +454,7 @@
     <div class="side-menu-panel">
       <div class="side-menu-head">
         <div>
-          <strong>Crescer Juntos</strong>
+          <strong>MEVIA</strong>
           <p>Criança ativa</p>
         </div>
         <button type="button" id="closeSideMenu" class="hero-circle-btn">✕</button>
@@ -478,11 +477,12 @@
   <div id="sideMenuBackdrop" class="side-menu-backdrop hidden"></div>
 
   <nav class="bottom-nav" aria-label="Navegação inferior">
-    <button type="button" class="bottom-nav-btn active" data-tab-target="inicio"><span>🏠</span><small>Home</small></button>
-    <button type="button" class="bottom-nav-btn" data-tab-target="perfilconfig"><span>👤</span><small>Perfil</small></button>
+    <button type="button" class="bottom-nav-btn active" data-tab-target="inicio"><span aria-hidden="true">🏠</span><small>Home</small></button>
+    <button type="button" class="bottom-nav-brand" data-tab-target="inicio" aria-label="MEVIA"><img src="icons/favicon.png?v=5" alt="" /></button>
+    <button type="button" class="bottom-nav-btn" data-tab-target="perfilconfig"><span aria-hidden="true">👤</span><small>Perfil</small></button>
   </nav>
 <footer class="app-footer">
-    <span>cReScer juntos • MVP local</span>
+    <span>MEVIA</span>
   </footer>
 
   <div id="memoryViewerModal" class="modal memory-viewer hidden" role="dialog" aria-modal="true" aria-label="Visualização da memória">

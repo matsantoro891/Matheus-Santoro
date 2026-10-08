@@ -6,8 +6,8 @@ const DEFAULT_CATEGORIES = ['Peso', 'Altura', 'Perímetro cefálico', 'Desenvolv
 const THEME_STAGES = ['bebe', 'primeira-infancia', 'infancia', 'pre-adolescencia', 'adolescencia'];
 const THEME_GENDERS = ['masculino', 'feminino'];
 const THEME_IMAGES = {
-  masculino: 'themes/crescer-bg-masculino-vertical.png',
-  feminino: 'themes/crescer-bg-feminino-vertical.png'
+  masculino: 'assets/mevia-fundo-masculino.jpg',
+  feminino: 'assets/mevia-fundo-feminino.jpg'
 };
 const RETIRED_TABS = new Set(['memorias', 'agenda', 'favoritos']);
 const RETIRED_PDF_SECTIONS = new Set(['agenda', 'proximos', 'memoriasFavoritas', 'consultas', 'vacinas']);
@@ -229,7 +229,7 @@ function applyTheme() {
   if (home) {
     home.style.removeProperty('--theme-bg');
     if (themed) {
-      const versionedImage = `${theme.image}?v=4`;
+      const versionedImage = `${theme.image}?v=5`;
       const image = new Image();
       image.onload = () => {
         if (token !== themeLoadToken) return;
@@ -248,6 +248,10 @@ function applyTheme() {
   }
   const hint = $('themeHint');
   if (hint) hint.textContent = theme.reason;
+  const themeMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeMeta) {
+    themeMeta.setAttribute('content', theme.gender === 'feminino' ? '#f6e4ea' : theme.gender === 'masculino' ? '#e5f1fb' : '#f7f4ef');
+  }
   const homeNotice = $('homeThemeNotice');
   const homeNoticeText = $('homeThemeNoticeText');
   const sexMissing = !String(currentChild().sexo || '').trim();
@@ -794,6 +798,28 @@ function registerServiceWorker() {
   }
 }
 
+function bindBottomNavViewport() {
+  const nav = document.querySelector('.bottom-nav');
+  const viewport = window.visualViewport;
+  if (!nav || !viewport) return;
+  let frame = 0;
+  const sync = () => {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => {
+      const gap = window.innerHeight - viewport.height;
+      if (gap > 140) {
+        const lift = Math.max(0, window.innerHeight - viewport.offsetTop - viewport.height);
+        nav.style.bottom = `${lift + 8}px`;
+      } else {
+        nav.style.bottom = '';
+      }
+    });
+  };
+  viewport.addEventListener('resize', sync);
+  viewport.addEventListener('scroll', sync);
+  sync();
+}
+
 function initTabs() {
   qsa('.tab-btn').forEach(button => button.addEventListener('click', () => switchTab(button.dataset.tab)));
   qsa('[data-tab-target]').forEach(button => button.addEventListener('click', () => switchTab(button.dataset.tabTarget)));
@@ -1324,9 +1350,9 @@ async function shareAsset(asset) {
     const blob = await (await fetch(asset.dataUrl)).blob();
     const file = new File([blob], asset.name || 'arquivo', { type: asset.type || blob.type });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: asset.name || 'Arquivo Crescer Juntos' });
+      await navigator.share({ files: [file], title: asset.name || 'Arquivo MEVIA' });
     } else if (navigator.share) {
-      await navigator.share({ title: asset.name || 'Arquivo Crescer Juntos', text: 'Arquivo salvo no Crescer Juntos.' });
+      await navigator.share({ title: asset.name || 'Arquivo MEVIA', text: 'Arquivo salvo no MEVIA.' });
     } else {
       triggerDownload(asset.dataUrl, asset.name || 'arquivo');
     }
@@ -3399,8 +3425,8 @@ async function exportBackup() {
       }
     }
   }
-  const content = JSON.stringify({ exportedAt: new Date().toISOString(), app: 'cReScer juntos', version: 5, state: exportState }, null, 2);
-  downloadText(`backup-crescer-juntos-${new Date().toISOString().slice(0,10)}.json`, content, 'application/json');
+  const content = JSON.stringify({ exportedAt: new Date().toISOString(), app: 'MEVIA', version: 5, state: exportState }, null, 2);
+  downloadText(`backup-mevia-${new Date().toISOString().slice(0,10)}.json`, content, 'application/json');
   showToast('Backup exportado com os anexos dos exames.');
 }
 
@@ -3459,7 +3485,7 @@ async function addPdfHeader(doc, documentTitle, childName = '') {
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(22, 110, 229);
   doc.setFontSize(18);
-  doc.text('Crescer Juntos', 34, 18);
+  doc.text('MEVIA', 34, 18);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(23, 33, 58);
   doc.setFontSize(9.5);
@@ -3495,7 +3521,7 @@ function addPdfFooter(doc, title) {
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
-    doc.text('Crescer Juntos', 14, 292);
+    doc.text('MEVIA', 14, 292);
     doc.setFont('helvetica', 'normal');
     doc.text(title, 105, 292, { align: 'center' });
     doc.text(`Página ${page} de ${pages}`, 196, 292, { align: 'right' });
@@ -3809,7 +3835,7 @@ function addPdfIdentityHeader(doc, child, logo, title) {
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(22, 110, 229);
   doc.setFontSize(18);
-  doc.text('Crescer Juntos', 36, 20);
+  doc.text('MEVIA', 36, 20);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(23, 33, 58);
   doc.setFontSize(9.5);
@@ -4273,7 +4299,7 @@ function maybeRenderSharedSummary() {
       <main class="layout">
         <article class="card">
           <h1>Resumo da criança</h1>
-          <p>Informações principais compartilhadas via cReScer juntos.</p>
+          <p>Informações principais compartilhadas via MEVIA.</p>
           <div class="list">
             ${Object.entries(data).map(([key, value]) => Array.isArray(value)
               ? `<div class="item"><strong>${escapeHtml(labelFromKey(key))}</strong>${value.map(v => `<p>• ${escapeHtml(v)}</p>`).join('') || '<p>-</p>'}</div>`
@@ -4297,6 +4323,7 @@ function labelFromKey(key) {
 async function init() {
   if (maybeRenderSharedSummary()) return;
   registerServiceWorker();
+  bindBottomNavViewport();
   initTabs();
   addFormListeners();
   if (typeof initDnp === 'function') initDnp();
