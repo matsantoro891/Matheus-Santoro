@@ -1,20 +1,24 @@
-const CACHE_NAME = 'crescer-juntos-v66-cache';
+const CACHE_NAME = 'crescer-juntos-v67-cache';
 const CORE_ASSETS = [
   './',
   './index.html',
-  './styles.css?v=60',
+  './styles.css?v=64',
   './dnp-catalog.js?v=38',
-  './dnp.js?v=52',
-  './app.js?v=49',
+  './dnp.js?v=53',
+  './app.js?v=50',
   './growth-reference.js?v=33',
   './growth-reference-ext.js?v=33',
-  './manifest.json?v=32',
+  './manifest.json?v=33',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './icons/icon-maskable-512.png',
   './icons/apple-touch-icon.png',
+  './icons/favicon.png',
+  './icons/favicon.ico',
   './icons/logo-main.png',
-  './themes/crescer-bg-masculino-vertical.png?v=4',
-  './themes/crescer-bg-feminino-vertical.png?v=4'
+  './assets/mevia-logo-transparente.png',
+  './assets/mevia-fundo-masculino.jpg',
+  './assets/mevia-fundo-feminino.jpg'
 ];
 
 self.addEventListener('install', event => {

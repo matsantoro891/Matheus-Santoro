@@ -1335,7 +1335,7 @@ async function generateDnpDoctorPdf(child = dnpChild(), { download = true } = {}
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(fs(12.36));
     setInk(ink);
-    dnpPdfWrite(doc, 'cReScer juntos', pageW / 2, state.y, { align: 'center' });
+    dnpPdfWrite(doc, 'MEVIA', pageW / 2, state.y, { align: 'center' });
     state.y += 13;
     doc.setFontSize(fs(16));
     dnpPdfWrite(doc, 'Desenvolvimento Neuropsicomotor', pageW / 2, state.y, { align: 'center' });
@@ -1583,7 +1583,7 @@ function dnpPdfContinuationHeader(doc, summary, accent, ink, muted, margin) {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(fs(9));
   doc.setTextColor(ink.r, ink.g, ink.b);
-  dnpPdfWrite(doc, 'cReScer juntos', margin, logoY + 4);
+  dnpPdfWrite(doc, 'MEVIA', margin, logoY + 4);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(fs(8));
   doc.setTextColor(muted.r, muted.g, muted.b);
