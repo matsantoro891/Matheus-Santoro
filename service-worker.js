@@ -1,23 +1,24 @@
-const CACHE_NAME = 'crescer-juntos-v67-cache';
+const CACHE_NAME = 'crescer-juntos-v69-cache';
 const CORE_ASSETS = [
   './',
   './index.html',
-  './styles.css?v=64',
+  './styles.css?v=66',
   './dnp-catalog.js?v=38',
   './dnp.js?v=53',
   './app.js?v=50',
   './growth-reference.js?v=33',
   './growth-reference-ext.js?v=33',
-  './manifest.json?v=33',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/icon-maskable-512.png',
-  './icons/apple-touch-icon.png',
-  './icons/favicon.png',
-  './icons/favicon.ico',
+  './manifest.json?v=6',
+  './icons/icon-192.png?v=6',
+  './icons/icon-512.png?v=6',
+  './icons/icon-maskable-512.png?v=6',
+  './icons/apple-touch-icon.png?v=6',
+  './icons/favicon.png?v=6',
+  './icons/favicon.ico?v=6',
   './icons/logo-main.png',
   './assets/mevia-logo-transparente.png',
-  './assets/mevia-fundo-masculino.jpg',
+  './assets/mevia-fundo-masculino.jpg?v=6',
+  './assets/mevia-fundo-masculino-desktop.jpg?v=6',
   './assets/mevia-fundo-feminino.jpg'
 ];
 

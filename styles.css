@@ -2262,3 +2262,22 @@ html { scroll-padding-bottom: calc(108px + env(safe-area-inset-bottom)); }
   .dnp-pdf-btn { width: 100%; white-space: normal; }
   .dnp-entry-section { flex-basis: 100%; }
 }
+body[data-theme="infantil-masculino"] .mevia-scene-bg {
+  background-image: url("./assets/mevia-fundo-masculino.jpg?v=6");
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: cover;
+}
+@media (min-width: 641px) {
+  body[data-theme="infantil-masculino"] .mevia-scene-bg {
+    background-image: url("./assets/mevia-fundo-masculino-desktop.jpg?v=6");
+  }
+}
+body[data-theme="infantil-masculino"] #inicio .hero-logo {
+  visibility: hidden;
+}
+body[data-theme="infantil-masculino"] .app-header {
+  background: transparent;
+  border-bottom-color: transparent;
+  backdrop-filter: none;
+}
