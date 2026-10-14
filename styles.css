@@ -2273,6 +2273,12 @@ body[data-theme="infantil-masculino"] .mevia-scene-bg {
     background-image: url("./assets/mevia-fundo-masculino-desktop.jpg?v=6");
   }
 }
+@media (max-width: 640px) {
+  /* Reserva espaço para a pipa, o carrinho e o ursinho antes do cartão da criança. */
+  body[data-theme="infantil-masculino"] #inicio .home-hero {
+    min-height: max(300px, 53dvh);
+  }
+}
 body[data-theme="infantil-masculino"] #inicio .hero-logo {
   visibility: hidden;
 }
